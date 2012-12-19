@@ -78,6 +78,28 @@ other file formats without affecting the rest of the system.
 #include "fitsio.h"
 
 /* ========================================================================= */
+/*                         Set up messaging services                         */
+/* ========================================================================= */
+
+class kdu_stream_message : public kdu_message {
+public: // Member classes
+    kdu_stream_message(std::ostream *stream)
+    { this->stream = stream; }
+    void put_text(const char *string)
+    { (*stream) << string; }
+    void flush(bool end_of_message=false)
+    { stream->flush(); }
+private: // Data
+    std::ostream *stream;
+};
+
+static kdu_stream_message cout_message(&std::cout);
+static kdu_stream_message cerr_message(&std::cerr);
+static kdu_message_formatter pretty_cout(&cout_message);
+static kdu_message_formatter pretty_cerr(&cerr_message);
+
+
+/* ========================================================================= */
 /*                             Internal Functions                            */
 /* ========================================================================= */
 
@@ -3236,9 +3258,12 @@ fits_in::fits_in(const char *fname,
                  bool &vflip,
                  kdu_rgb8_palette *palette)
 {
+    kdu_message_formatter out(&cout_message); 
     incomplete_lines = NULL;
     free_lines = NULL;
     num_unread_rows = 0;
+    fits.deafult_min = -50.0;
+    fits.deafult_min = 50.0;
   //  initial_non_empty_tiles = 0;
     
     fits.startStoke = fits.startPlane = 1; // default (FITS frames and stokes are counted from 1)
@@ -3291,6 +3316,9 @@ fits_in::fits_in(const char *fname,
     // Record image dimensions.
 	cols = cinfo.width = naxes[0];
 	rows = cinfo.height = naxes[1];
+    out << "FITS image's dimensions:\n"
+        "cols = " << cols << "\n"
+        "rows = " << rows << "\n";
     
     // Now see if cropping is required
     int crop_y, crop_x, crop_height, crop_width;
@@ -3322,6 +3350,7 @@ fits_in::fits_in(const char *fname,
     // a 4 dimensional image. Check if that this is the case.
 	if (cinfo.naxis > 2) {
 		cinfo.depth = naxes[2];  // number of frames
+        out << "depth = " << cinfo.depth << "\n";
         if (cinfo.depth < planesout) {
             kdu_error e; 
             e << "The number available frames in FITS is less than requested!"; 
@@ -3393,17 +3422,32 @@ fits_in::fits_in(const char *fname,
     { kdu_error e;
         e << "Unable to get the number of header keywords in FITS file";
     }
+    
+    float_minvals = fits.deafult_min;
+    float_maxvals = fits.deafult_max;
+    
     for (int ii=1; ii<=nkeys; ii++) {
         fits_read_keyn(in,ii,keyname,keyvalue,keycomment, &status);
         if (status != 0)
         { kdu_error e;
             e << "Error reading keyword number " << ii;
         }
-        kdu_message msg;
-        msg << "KEYNAME: " << keyname << "VALUE: " << keyvalue 
-            << "COMMENT: " << keycomment;
+        
+        // overwitte default min and max values for the entire image
+        if (!fits.minmax)
+        {
+          if (!strcmp(keyname, "DATAMIN")) sscanf(keyvalue, "%lf", &float_minvals);
+          if (!strcmp(keyname, "DATAMAX")) sscanf(keyvalue, "%lf", &float_maxvals);
+        }
+        
+        if (fits.meta)
+         out << keyname << ": " << keyvalue << "\n  Comment: " << keycomment << "\n";
+        
     }
-  
+    out << "\nThe following values of MIN and MAX will be used:\n";
+    out << "DATAMIN = " << float_minvals << "\n";
+    out << "DATAMAX = " << float_maxvals << "\n";
+    
     // scaling of FITS when reading
     {
     double scale = 1.0;
@@ -3522,19 +3566,6 @@ fits_in::fits_in(const char *fname,
                              has_unassociated_alpha,  
                              colour_space_confidence,
                              colour_space);
-    
-//
-//    if ((palette != NULL) && !palette->exists())                                    // todo: need to understand more about palette
-//    {
-//        palette->input_bits = 0; //by making both input_bits and output_bits we make the palette non-existent
-//        palette->output_bits = 0;
-////        palette->source_component = next_comp_idx;  //this first component contains the palette info 
-//        palette->blue[0] = palette->green[0] = palette->red[0] = 0;
-//        palette->blue[1] = palette->green[1] = palette->red[1] = 255;
-//        // Note that we will be flipping the bits so that a 0 really does
-//        // represent black, rather than white -- this is more efficient for
-//        // coding facsimile type images where the background is white.
-//    }
     
     first_comp_idx = next_comp_idx;
     
@@ -3671,7 +3702,7 @@ fits_in::get(int comp_idx, // component number: 0 to num_components
                 fits_read_pixll(in, TFLOAT, fpixel, width, &nulval, 
                                 buffer, &anynul, &status);                
                 convert_TFLOAT_to_floats(buffer,line.get_buf32(), width, 
-                                         true, -14.5, 14.5);
+                                         true, float_minvals, float_maxvals);
                 free(buffer);
                 break;
             case DOUBLE_IMG:    
@@ -3860,7 +3891,39 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
             fits.performCompressionBenchmarking = true;
             args.advance();
         }
+        if (args.find("-meta") != NULL){ // Should input image metadata be displayed
+            fits.meta = true;
+            args.advance();
+        }
 
+        if (args.find("-minmax") != NULL)
+        {
+            fits.minmax = true;
+            const char *field_sep, *string = args.advance();
+            for (field_sep=NULL; string != NULL; string=field_sep)
+            {
+                if (field_sep != NULL)
+                {
+                    if (*string != ',')
+                    { kdu_error e; e << "\"-minmax\" argument requires a comma-"
+                        "separated min and max values."; }
+                    string++; // Walk past the separator
+                }
+                if (*string == '\0')
+                    break;
+                if (((field_sep = strchr(string,'}')) != NULL) &&
+                    (*(++field_sep) == '\0'))
+                    field_sep = NULL;
+                
+                if (sscanf(string,"{%lf,%lf}", &fits.deafult_min, &fits.deafult_max) != 2)
+                { kdu_error e; e << "\"-minmax\" argument contains malformed "
+                    "specification. Expected to find two comma-separated "
+                    "float numbers, enclosed by curly braces. Example: -minmax {-1.0,1.0}"; }
+            }
+            args.advance();
+        }
+        
+        
         if (args.find("-iplane") != NULL)
         {
             const char *field_sep, *string = args.advance();
@@ -3879,7 +3942,7 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
                     (*(++field_sep) == '\0'))
                     field_sep = NULL;
                 
-                if ((sscanf(string,"{%d,%d}", &fits.startPlane,
+                if ((sscanf(string,"{%ld,%ld}", &fits.startPlane,
                             &fits.endPlane) != 2) || (fits.startPlane < 1) || 
                     (fits.endPlane < 1) || (fits.startPlane <= fits.endPlane))
                 { kdu_error e; e << "\"-iplane\" argument contains malformed "
@@ -3909,7 +3972,7 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
                     (*(++field_sep) == '\0'))
                     field_sep = NULL;
 
-                if ((sscanf(string,"{%d,%d}", &fits.startStoke,
+                if ((sscanf(string,"{%ld,%ld}", &fits.startStoke,
                             &fits.endStoke) != 2) ||
                     (fits.startStoke < 1) || (fits.endStoke < 1) || 
                     (fits.startStoke <= fits.endStoke) || 

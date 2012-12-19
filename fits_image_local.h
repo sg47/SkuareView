@@ -194,7 +194,22 @@ typedef struct {
     // field should be written to a file.  Assumed to be 
     // initialised to false before this function is called and 
     // will not be changed if -noise_field and -noise are not 
-    // present. 
+    // present.
+    bool meta; // -meta in command line specifies whether FITS header
+    //is to be dysplayed or not
+    bool  minmax; // -minmax in command line specifies minimum and maximum values
+    // in input FITS image. These values are given for the entire FITS regardless
+    // the number of image planes and stock parameters
+    double deafult_min;  // if DATAMIN parameter is not present in FITS header default_min
+    // will be used insted. Deafult_min value must be initialized in constructor. If minmax
+    // is present in the command line arguments, deafult_min will be orevwritten with provided
+    // value.
+    double deafult_max;
+    // if DATAMAX parameter is not present in FITS header default_min
+    // will be used insted. Deafult_min value must be initialized in constructor. If minmax
+    // is present in the command line arguments, deafult_max will be orevwritten with provided
+    // value
+    
 } fits_param;
 
 
@@ -683,8 +698,8 @@ public: // Member functions
     ~fits_in();
     bool get(int comp_idx, kdu_line_buf &line, int x_tnum);
 private: // Members describing the organization of the FITS data
-    double *float_minvals; // When FITS file contains floating-point samples
-    double *float_maxvals; // When FITS file contains floating-point samples
+    double float_minvals; // When FITS file contains floating-point samples
+    double float_maxvals; // When FITS file contains floating-point samples
     kdu_uint16 bitspersample;
     kdu_simple_file_source src;
     fitsfile *in;     //pointer to open FITS image

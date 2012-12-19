@@ -87,8 +87,8 @@ compression-oriented capabilities of the Kakadu framework.
 #include "compress_local.h"
 #include "roi_sources.h"
 
-#include <gsl/gsl_rng.h>
-#include <gsl/gsl_randist.h>
+//#include <gsl/gsl_rng.h>
+//#include <gsl/gsl_randist.h>
 
 // Added specfic includes
 #include "fits_image_local.h"
