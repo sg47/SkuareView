@@ -126,13 +126,15 @@ typedef enum {
 	NEGATIVE_POWER, // Inverse image from power scale
 	DEFAULT // Default transform to use if no transform is explicitly specified.  
     // This will depend on the FITS data type.
-} transform;
+} Transform;
 
 
 typedef struct {
-    transform transform; // the transform to be performed on the raw data.  
+    Transform transform; // the transform to be performed on the raw data.  
     // This will be updated if a transform is specified on the 
     // command line using the parameter A.
+    bool convertToInt; // specifying if the image will be converted from floating
+    // point to integer format
     bool writeUncompressed; // specifying if a lossless version of image
     // should be written.  This will be set to true if 
     // the LL parameter is present on the command line.
@@ -592,6 +594,7 @@ class tif_in : public kdu_image_in_base {
   public: // Member functions
     tif_in(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
            kdu_rgb8_palette *palette, kdu_long skip_bytes, bool quiet);
+    tif_in();
     ~tif_in();
     bool get(int comp_idx, kdu_line_buf &line, int x_tnum);
   private: // Helper functions

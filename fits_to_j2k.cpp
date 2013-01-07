@@ -73,6 +73,7 @@ compression-oriented capabilities of the Kakadu framework.
 // Kakadu core includes
 #include "kdu_arch.h"
 #include "kdu_elementary.h"
+#include "fits_kdu_image.h"
 #include "kdu_messaging.h"
 #include "kdu_params.h"
 #include "kdu_compressed.h"
@@ -80,7 +81,6 @@ compression-oriented capabilities of the Kakadu framework.
 #include "kdu_sample_processing.h"
 // Application includes
 #include "kdu_args.h"
-#include "fits_kdu_image.h"
 #include "kdu_file_io.h"
 #include "jp2.h"
 #include "jpx.h"

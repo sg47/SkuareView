@@ -3698,12 +3698,23 @@ fits_in::get(int comp_idx, // component number: 0 to num_components
                                         " is not supported yet";}
                 break;
             case FLOAT_IMG:     //<##>
-                
+                std::cout << "before" << std::endl;
                 fits_read_pixll(in, TFLOAT, fpixel, width, &nulval, 
-                                buffer, &anynul, &status);                
-                convert_TFLOAT_to_floats(buffer,line.get_buf32(), width, 
-                                         true, float_minvals, float_maxvals);
-                free(buffer);
+                                buffer, &anynul, &status);
+				kdu_sample32 *buf32;                
+               	if (fits.convertToInt) {
+		            std::cout << "r2" << std::endl;
+                    convert_floats_to_ints(scan->buf, line.get_buf32(), width,
+			        	               precision, true, float_minvals,
+			 	                       float_maxvals, sample_bytes, true, 0);
+		        }
+	        	else {
+		            std::cout << "r3" << std::endl;
+		            convert_TFLOAT_to_floats(buffer, buf32, width, 
+                            true, float_minvals, float_maxvals);
+		        }
+		        free(buffer);
+		        std::cout << "after" << std::endl;
                 break;
             case DOUBLE_IMG:    
                 {kdu_error e; e << "Double precition floating point"
@@ -3764,7 +3775,11 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
     const char *string;
     
     if (args.get_first() != NULL){
-        if (args.find("-l") != NULL){ // should a lossless version be written
+        if (args.find("-to_int")){
+	    fits.convertToInt = true;
+	    args.advance();		
+	}
+	if (args.find("-l") != NULL){ // should a lossless version be written
             fits.writeUncompressed = true;
             args.advance();
         }
@@ -3981,7 +3996,6 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
                 { kdu_error e; e << "\"-istok\" argument contains malformed "
                     "stok specification.  Expected to find two comma-separated "
                     "integers, enclosed by curly braces.  They must be strictly "
-                    "positive integers in the range 1 to 5. The second "
                     "parameter must be larger than the first one"; }
             }
             args.advance();
