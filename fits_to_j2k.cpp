@@ -2487,6 +2487,7 @@ static kdu_long
   int flush_counter = flush_period;
   int tile_row = 0; // Just for progress counter
   int progress_counter = 0;
+  
   while (!done)
     { 
       while (!done)
@@ -2511,6 +2512,7 @@ static kdu_long
                   progress_counter = 0;
                 }
             }
+
           if (flush_counter <= 0)
             {
               int rem = tile_flows[0]->get_max_remaining_lines();
@@ -2529,7 +2531,6 @@ static kdu_long
                 }
             }
         }
-
       for (x_tnum=0; x_tnum < tile_indices.size.x; x_tnum++)
         if (tile_flows[x_tnum]->advance_tile())
           done = false;
@@ -2680,6 +2681,7 @@ static kdu_long
       { 
         while (!done)
           { // Process a row of tiles line by line.
+            
             done = true;
             for (x_tnum=0; x_tnum < tile_indices.size.x; x_tnum++)
               { 
@@ -2689,6 +2691,7 @@ static kdu_long
                     tile_flows[x_tnum]->process_components(&env);
                   }
               }
+
             if (!done)
               { 
                 if ((++progress_counter) == progress_interval)
@@ -2738,6 +2741,8 @@ static kdu_long
     pretty_cout << "\tInitiating final codestream flush ...\n";
   codestream.flush(layer_bytes,num_layer_specs,layer_thresholds,
                    true,record_info_in_comseg,rate_tolerance);
+  std::cout << "sample_processing_bytes " << sample_processing_bytes << std::endl;
+  exit(1);
   return sample_processing_bytes;
 }
 
@@ -3325,6 +3330,7 @@ int main(int argc, char *argv[])
   // Now we are ready for sample data processing.
   kdu_dims tile_indices; codestream.get_valid_tiles(tile_indices);
   kdu_long sample_processing_bytes=0;
+  
   if (num_threads == 0)
     {
       int dwt_stripe_height = 1;

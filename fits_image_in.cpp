@@ -594,6 +594,46 @@ convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num,
 }
 
 /*****************************************************************************/
+/* STATIC                  convert_TFLOAT_to_ints                          */
+/*****************************************************************************/
+static void
+convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
+                         int precision, bool is_signed,
+                         double minval, double maxval, int sample_bytes)
+{
+    double scale, offset=0.0;
+    double limmin=-0.75, limmax=0.75;
+    if (is_signed)
+      scale = 0.5 / (((maxval+minval) > 0.0)?maxval:(-minval));
+    else
+      {
+        scale = 1.0 / maxval;
+        offset = -0.5;
+      }
+    scale *= (double)((1<<precision)-1);
+    offset *= (double)(1<<precision);
+    limmin *= (double)(1<<precision);
+    limmax *= (double)(1<<precision);
+    if (sample_bytes == 4)
+      { // Transfer floats to ints
+          for (int i; i<num; ++i)
+            {
+              double fval = (float)(src[i] * scale + offset);
+              fval = (fval > limmin)?fval:limmin;
+              fval = (fval < limmax)?fval:limmax;
+              dest[i].ival = (kdu_int32) fval;
+            }
+      }
+    else if (sample_bytes == 8)
+      { // Transfer doubles to ints, with some scaling
+        kdu_error e; e << "double to int conversion not implemented";
+      }
+    else
+      assert(0);
+}
+
+
+/*****************************************************************************/
 /* STATIC                    force_sample_precision                          */
 /*****************************************************************************/
 
@@ -921,7 +961,6 @@ kdu_image_in::kdu_image_in(const char *fname, kdu_args &args, kdu_image_dims &di
                            bool quiet)
 {
     const char *suffix;
-    
     in = NULL;
     vflip = false; // Allows derived constructors to ignore the argument.
     if ((suffix = strrchr(fname,'.')) != NULL)
@@ -2239,7 +2278,6 @@ tif_in::tif_in(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
           "cannot cope with TIFF files whose image planes each have different "
           "bit depths."; }
       precision = (int) bitspersample;
-
       kdu_uint16 sampleformat = KDU_TIFF_SampleFormat_UNSIGNED; // Default
       tiffdir.read_tag(KDU_TIFFTAG_SampleFormat,1,&sampleformat);
       if ((sampleformat == KDU_TIFF_SampleFormat_FLOAT) && (n == 0))
@@ -3006,6 +3044,7 @@ bool
     src += sample_bytes * (idx + num_components*scan->accessed_samples);
   if (float_minvals != NULL)
     {
+        std::cout << "floats" << std::endl;
       kdu_sample32 *buf32 = line.get_buf32();
       if (buf32 == NULL)
         { kdu_error e; e << "Attempting to pass floating point sample "
@@ -3026,6 +3065,7 @@ bool
     }
   else if (line.get_buf32() != NULL)
     {
+      std::cout <<"word32: " << std::endl;
       if (line.is_absolute())
         convert_words_to_ints(src,line.get_buf32(),width,precision,
                       is_signed[idx],sample_bytes,post_unpack_littlendian,
@@ -3037,6 +3077,7 @@ bool
     }
   else
     {
+        std::cout << "word16" << std::endl;
       if (line.is_absolute())
         convert_words_to_shorts(src,line.get_buf16(),width,precision,
                       is_signed[idx],sample_bytes,post_unpack_littlendian,
@@ -3273,7 +3314,7 @@ fits_in::fits_in(const char *fname,
     if(!parse_fits_parameters(args))
     { kdu_error e;
         e << "Error occured parsing FITS command line parameters";}
-    
+
 	// Open specified file for read only access.
 	fits_open_file(&in, fname, READONLY, &status); 
 	if (status != 0)
@@ -3313,6 +3354,7 @@ fits_in::fits_in(const char *fname,
         e << "Unable to get FITS image size.";
     }
 
+   
     // Record image dimensions.
 	cols = cinfo.width = naxes[0];
 	rows = cinfo.height = naxes[1];
@@ -3374,7 +3416,7 @@ fits_in::fits_in(const char *fname,
     }
     
 	free(naxes);
-    
+
     if(cinfo.stokes > 1){
         if(fits.endStoke == 0){  // by default take everything
             fits.startStoke = 1;
@@ -3698,23 +3740,20 @@ fits_in::get(int comp_idx, // component number: 0 to num_components
                                         " is not supported yet";}
                 break;
             case FLOAT_IMG:     //<##>
-                std::cout << "before" << std::endl;
                 fits_read_pixll(in, TFLOAT, fpixel, width, &nulval, 
                                 buffer, &anynul, &status);
-				kdu_sample32 *buf32;                
-               	if (fits.convertToInt) {
-		            std::cout << "r2" << std::endl;
-                    convert_floats_to_ints(scan->buf, line.get_buf32(), width,
+                if (line.is_absolute()) { // reversible transformation
+                    convert_TFLOAT_to_ints(buffer, line.get_buf32(), width,
 			        	               precision, true, float_minvals,
-			 	                       float_maxvals, sample_bytes, true, 0);
-		        }
-	        	else {
-		            std::cout << "r3" << std::endl;
-		            convert_TFLOAT_to_floats(buffer, buf32, width, 
+			 	                       float_maxvals, sample_bytes);
+                }
+                else {
+                    convert_TFLOAT_to_floats(buffer, line.get_buf32(), width, 
                             true, float_minvals, float_maxvals);
-		        }
-		        free(buffer);
-		        std::cout << "after" << std::endl;
+                }
+                kdu_int32 *tempi;
+                float* tempf;
+                free(buffer);
                 break;
             case DOUBLE_IMG:    
                 {kdu_error e; e << "Double precition floating point"
