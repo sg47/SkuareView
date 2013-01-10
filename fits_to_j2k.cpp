@@ -2595,6 +2595,7 @@ static kdu_long
      found with `compress_single_threaded'. */
 {
   // Construct multi-threaded processing environment if required
+    std::cout << "compress_multi_threaded" << std::endl << std::flush;
   kdu_thread_env env;
   env.create();
   int nt=num_threads-1, nxt=num_xform_threads, nct=num_coding_threads;
@@ -2724,6 +2725,7 @@ static kdu_long
     // call to `kdu_thread_entity::handle_exception' for maximum robustness.
   }
 
+  std::cout << "after" << std::endl << std::flush;
   // Cleanup processing environment
   env.join(NULL,true); // Wait until all internal processing is complete
   env.cs_terminate(codestream); // Terminates background codestream processing
@@ -2742,7 +2744,6 @@ static kdu_long
   codestream.flush(layer_bytes,num_layer_specs,layer_thresholds,
                    true,record_info_in_comseg,rate_tolerance);
   std::cout << "sample_processing_bytes " << sample_processing_bytes << std::endl;
-  exit(1);
   return sample_processing_bytes;
 }
 
@@ -3160,12 +3161,16 @@ int main(int argc, char *argv[])
                              iscan->cropping.size.y,iscan->cropping.size.x,i);
           i++;
         } while (i < idims.get_num_components());
+ 
       iscan->reader =
         kdu_image_in(iscan->fname, args, idims,num_source_components,flip,
                      ((no_palette || !(is_jp2||is_jpx))?NULL:(&palette)),
                      iscan->offset,quiet);
 
       iscan->num_components = num_source_components - iscan->first_comp_idx;
+      std::cout << "idims.num_comp: " << idims.get_num_components() << std::endl;
+      std::cout << "idims.bit_depth: " << idims.get_bit_depth(0) << std::endl;
+      //idims.set_bit_depth(0,16);
       if (iscan == inputs)
         extra_flip = flip;
       if (extra_flip != flip)

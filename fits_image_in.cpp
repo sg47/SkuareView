@@ -3044,7 +3044,7 @@ bool
     src += sample_bytes * (idx + num_components*scan->accessed_samples);
   if (float_minvals != NULL)
     {
-        std::cout << "floats" << std::endl;
+      std::cout << "floats " << line.is_absolute() << std::endl;
       kdu_sample32 *buf32 = line.get_buf32();
       if (buf32 == NULL)
         { kdu_error e; e << "Attempting to pass floating point sample "
@@ -3556,7 +3556,7 @@ fits_in::fits_in(const char *fname,
     }
  
     // Set initial parameters -- these may change if there is a colour palette
- //   expand_palette = remap_samples = invert_first_component = false;
+    //   expand_palette = remap_samples = invert_first_component = false;
 
     switch (cinfo.bitpix) { 
         case BYTE_IMG:      
@@ -3589,6 +3589,15 @@ fits_in::fits_in(const char *fname,
             break;
         }
 
+    // Very simple handling of -fprec parameter (probably too simplified)
+    int first_comp_idx = next_comp_idx;
+    bool align_lsbs = false;
+    int forced_prec = dims.get_forced_precision(first_comp_idx, align_lsbs);
+    if (forced_prec > 0) {
+        bitspersample = forced_prec;
+    }
+        
+    
     bytesample = bitspersample/8;
     num_bytes = cols * bytesample;
     precision = bitspersample;
@@ -3740,8 +3749,10 @@ fits_in::get(int comp_idx, // component number: 0 to num_components
                                         " is not supported yet";}
                 break;
             case FLOAT_IMG:     //<##>
-                fits_read_pixll(in, TFLOAT, fpixel, width, &nulval, 
+                {fits_read_pixll(in, TFLOAT, fpixel, width, &nulval, 
                                 buffer, &anynul, &status);
+                std::cout << ""; // Very confused but if you remove this line it no
+                                 // longer works correctly. Maybe a thread issue?
                 if (line.is_absolute()) { // reversible transformation
                     convert_TFLOAT_to_ints(buffer, line.get_buf32(), width,
 			        	               precision, true, float_minvals,
@@ -3751,10 +3762,8 @@ fits_in::get(int comp_idx, // component number: 0 to num_components
                     convert_TFLOAT_to_floats(buffer, line.get_buf32(), width, 
                             true, float_minvals, float_maxvals);
                 }
-                kdu_int32 *tempi;
-                float* tempf;
                 free(buffer);
-                break;
+                break;}
             case DOUBLE_IMG:    
                 {kdu_error e; e << "Double precition floating point"
                                         " is not supported yet";}
