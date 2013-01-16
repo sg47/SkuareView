@@ -1,3 +1,4 @@
+#include <vector>
 /*****************************************************************************/
 //
 //  @file: fits_image_in.cpp
@@ -76,6 +77,7 @@ other file formats without affecting the rest of the system.
 #include "fits_image_local.h"
 
 #include "fitsio.h"
+#include "hdf5.h"
 
 /* ========================================================================= */
 /*                         Set up messaging services                         */
@@ -985,6 +987,8 @@ kdu_image_in::kdu_image_in(const char *fname, kdu_args &args, kdu_image_dims &di
                  (strcmp(suffix+1,"imfits")==0) || (strcmp(suffix+1,"IMFITS")==0))
             in = new fits_in(fname, args, dims, next_comp_idx, vflip, palette);    
         //#endif
+        else if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0))
+            in = new hdf5_in(fname, args, dims, next_comp_idx, vflip, palette);
     }
     if (in == NULL)
     { kdu_error e; e << "Image file, \"" << fname << ", does not have a "
@@ -3044,7 +3048,6 @@ bool
     src += sample_bytes * (idx + num_components*scan->accessed_samples);
   if (float_minvals != NULL)
     {
-      std::cout << "floats " << line.is_absolute() << std::endl;
       kdu_sample32 *buf32 = line.get_buf32();
       if (buf32 == NULL)
         { kdu_error e; e << "Attempting to pass floating point sample "
@@ -3065,7 +3068,6 @@ bool
     }
   else if (line.get_buf32() != NULL)
     {
-      std::cout <<"word32: " << std::endl;
       if (line.is_absolute())
         convert_words_to_ints(src,line.get_buf32(),width,precision,
                       is_signed[idx],sample_bytes,post_unpack_littlendian,
@@ -3077,7 +3079,6 @@ bool
     }
   else
     {
-        std::cout << "word16" << std::endl;
       if (line.is_absolute())
         convert_words_to_shorts(src,line.get_buf16(),width,precision,
                       is_signed[idx],sample_bytes,post_unpack_littlendian,
@@ -3589,18 +3590,7 @@ fits_in::fits_in(const char *fname,
             break;
         }
 
-    // Very simple handling of -fprec parameter (probably too simplified)
-    int first_comp_idx = next_comp_idx;
-    bool align_lsbs = false;
-    int forced_prec = dims.get_forced_precision(first_comp_idx, align_lsbs);
-    if (forced_prec > 0) {
-        bitspersample = forced_prec;
-    }
-        
     
-    bytesample = bitspersample/8;
-    num_bytes = cols * bytesample;
-    precision = bitspersample;
 
 //    forced_prec = new int[num_components];
 //    forced_align_lsbs = new bool[num_components];
@@ -3619,6 +3609,18 @@ fits_in::fits_in(const char *fname,
                              colour_space);
     
     first_comp_idx = next_comp_idx;
+    
+    // Very simple handling of -fprec parameter (probably too simplified)
+    bool align_lsbs = false;
+    int forced_prec = dims.get_forced_precision(first_comp_idx, align_lsbs);
+    if (forced_prec > 0) {
+        bitspersample = forced_prec;
+    }
+        
+    
+    bytesample = bitspersample/8;
+    num_bytes = cols * bytesample;
+    precision = bitspersample;
     
     if (cinfo.bitpix == BYTE_IMG){ 
         for (int n=0; n < num_components; n++)
@@ -3751,17 +3753,20 @@ fits_in::get(int comp_idx, // component number: 0 to num_components
             case FLOAT_IMG:     //<##>
                 {fits_read_pixll(in, TFLOAT, fpixel, width, &nulval, 
                                 buffer, &anynul, &status);
-                std::cout << ""; // Very confused but if you remove this line it no
+                kdu_sample32 *buf32 = line.get_buf32();
                                  // longer works correctly. Maybe a thread issue?
                 if (line.is_absolute()) { // reversible transformation
-                    convert_TFLOAT_to_ints(buffer, line.get_buf32(), width,
+                        
+                    std::cout << std::flush; // Very confused but if you remove this line it no
+                    convert_TFLOAT_to_ints(buffer, buf32, width,
 			        	               precision, true, float_minvals,
 			 	                       float_maxvals, sample_bytes);
                 }
                 else {
-                    convert_TFLOAT_to_floats(buffer, line.get_buf32(), width, 
+                    convert_TFLOAT_to_floats(buffer, buf32, width, 
                             true, float_minvals, float_maxvals);
                 }
+                
                 free(buffer);
                 break;}
             case DOUBLE_IMG:    
@@ -4125,4 +4130,519 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
 	}
     
 	return TRUE;
+
+}
+
+/* ========================================================================= */
+/*                                   hdf5_in                                 */
+/* ========================================================================= */
+
+/*****************************************************************************/
+/*                               hdf5_in::hdf5_in                            */
+/*****************************************************************************/
+
+hdf5_in::hdf5_in(const char *fname, 
+                 kdu_args &args, 
+                 kdu_image_dims &dims, 
+                 int &next_comp_idx,
+                 bool &vflip,
+                 kdu_rgb8_palette *palette)
+{
+    // Initialize the state incase we need to cleanup prematurely
+    kdu_message_formatter out(&cout_message);
+    incomplete_lines = NULL;
+    free_lines = NULL;
+    num_unread_rows = 0;
+   
+    if (!parse_hdf5_parameters(args)) 
+        { kdu_error e; e << "Unable to parse HDF5 parameters"; }
+
+    // Open the file
+    file = H5Fopen(fname, H5F_ACC_RDONLY, H5P_DEFAULT);
+    if (file < 0) 
+        { kdu_error e; e << "Unable to open input HDF5 file."; }
+    
+    // Open the dataset
+    dataset = H5Dopen(file, "full_cube", H5P_DEFAULT); // TODO: dynamic data set name
+    if (dataset < 0) 
+        { kdu_error e; e << "Unable to open dataset in HDF5 file."; }
+    
+    // Get the datatype of the dataset
+    datatype = H5Dget_type(dataset);
+    if (datatype < 0) 
+        { kdu_error e; e << "Unable to get data type of dataset in HDF5 file."; }
+    
+    // Get the data class of the dataset
+    cinfo.t_class = H5Tget_class(datatype);
+    if (cinfo.t_class == H5T_NO_CLASS) 
+        { kdu_error e; e << "Unable to get class type of dataset in HDF5 file."; }
+    
+    // TODO: should use a bool rather than the HDF5 datatype
+    // Get the data order (i.e littlendian or bigendian)
+    order = H5Tget_order(datatype); 
+    if (order == H5T_ORDER_ERROR) 
+        { kdu_error e; e << "Unable to identify data order of dataset in HDF5 "
+                            "file."; }
+    
+    // Identify if the data is signed
+    is_signed = false;
+    if (cinfo.t_class != H5T_FLOAT) { // TODO: When implement support for further
+                                      // classes. This will be extended.
+        int is_signed_h5 = H5Tget_sign(datatype);
+        if (is_signed_h5 == H5T_SGN_2)
+            is_signed = true;
+        else if (is_signed_h5 == H5T_SGN_NONE)
+            is_signed = false;
+        else
+            { kdu_error e; e << "Unable to identify is data is signed."; }
+    }
+
+    // Get the number of bytes that represent each sample
+    sample_bytes = H5Tget_size(datatype); 
+    if (sample_bytes == 0) 
+        { kdu_error e; e << "Unable to get sample bytes of dataset in HDF5 "
+                            "file."; }
+    
+    // Get the number of bits that represent each sample
+    precision = H5Tget_precision(datatype);
+    if (precision == 0) 
+        { kdu_error e; e << "Unable to get precision of dataset in HDF5 file."; }
+    else if (precision != 8 * sample_bytes)
+        { kdu_error e; e << "Padding in sample bytes. Handling for this is "
+                            "unimplemented"; } // TODO
+    bitspersample = precision;
+
+    // TODO: implement forced precision
+
+    // Get the dataspace of the the dataset
+    dataspace = H5Dget_space(dataset);
+    if (dataspace < 0) 
+        { kdu_error e; e << "Unable to get dataspace of dataset in HDF5 "
+                            "file."; }
+    
+    // Get the rank (number of dims)
+    cinfo.naxis = H5Sget_simple_extent_ndims(dataspace);
+    if (cinfo.naxis < 0) 
+        { kdu_error e; e << "Unable to get number of dimensions of the "
+                            "dataspace of dataset in HDF5 file."; }
+                            
+    // Get the extent of the dimensions of the dataspace
+    hsize_t* dims_dataset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis); // Dataset dimensions
+    if (H5Sget_simple_extent_dims(dataspace, dims_dataset, NULL) != cinfo.naxis)
+    { kdu_error e; e << "Unable to get dimensions of the dataspace of "
+                        "dataset in HDF5 file."; }
+       
+    cinfo.height = (unsigned long)dims_dataset[0];
+    cinfo.width = (unsigned long)dims_dataset[1];
+        
+    out << "HDF5 image's dimensions:\n"
+           "rank = " << (unsigned int)(cinfo.naxis) << "\n" << 
+           "rows = " << (unsigned int)(cinfo.height) << "\n" << 
+           "cols = " << (unsigned int)(cinfo.width) << "\n";  
+   
+    if (cinfo.naxis == 3) {
+        cinfo.depth = (unsigned long)dims_dataset[2];
+        out << "frames = " << (unsigned int)(cinfo.depth) << "\n";
+    }
+    if (cinfo.naxis == 4) {
+        cinfo.stokes = (unsigned long)dims_dataset[3];
+        out << "stokes = " << (unsigned int)(cinfo.stokes) << "\n";
+    }
+    
+    free(dims_dataset);
+
+    // Now we handle the cropping parameter
+    // Note: This parameter will only handle 2 dimensions of cropping, we have
+    // to handle the other(s) seperately.
+    
+    int crop_y, crop_x, crop_height, crop_width;
+    // Offset of cube to be encoded within the original file image
+    offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+    // Extent of each dimension of the cube to be encoded
+    extent = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+    
+    if (dims.get_cropping(crop_y, crop_x, crop_height, crop_width, next_comp_idx)) {
+        if ((crop_x < 0) || (crop_y < 0)) 
+            { kdu_error e; e << "Requested input file cropping parameters are "
+            "illegal -- cannot have negative cropping offsets."; }
+        if ((crop_x + crop_width) > cinfo.width)
+            { kdu_error e; e << "Requested input file cropping parameters are "
+            "not compatible with actual image dimensions.  The cropping "
+            "region would cross the right hand boundary of the image."; }
+        if ((crop_y + crop_height) > cinfo.height)
+            { kdu_error e; e << "Requested input file cropping parameters are "
+            "not compatible with actual image dimensions. The cropping "
+            "region would cross the the lower hand boundary of the image."; }
+        offset[0] = crop_x;     offset[1] = crop_y;
+        extent[0] = crop_width;
+        extent[1] = crop_height; 
+    }
+    // TODO: Documentation on get_cropping is poor, as such if cropping has not been
+    // specified it is only my current assumption that it will return false
+    else { // No cropping specified, default is the whole image
+        offset[0] = offset[1] = 0;
+        extent[0] = cinfo.width;
+        extent[1] = cinfo.height;
+    }
+
+    // If we have 3 dimensions
+    if (cinfo.naxis > 2) {
+        // No cropping was specified on this dimension
+        if (h5_param.end_frame == 0) {
+            extent[2] = cinfo.depth;
+            offset[2] = 0;
+        }
+        // Cropping was specified on this dimension
+        else {
+            extent[2] = abs(h5_param.end_frame - h5_param.start_frame);
+            offset[2] = h5_param.start_frame;
+        }
+        if (cinfo.depth < extent[2])
+            { kdu_error e; e << "The number of available frames in the HDF5 file"
+            " is less than requested."; }        
+        num_components = extent[2]; 
+    }
+    else {
+        num_components = 1;
+    }
+    
+    // If we have 4 or more dimensions
+    if (cinfo.naxis > 3) { 
+        // No cropping was specified on this dimension
+        if (h5_param.end_stoke == 0) { 
+            offset[3] = 0;
+            extent[3] = cinfo.stokes;
+        }
+        // Cropping was specified on this dimension
+        else {
+            extent[3] = abs(h5_param.end_stoke - h5_param.start_stoke); 
+            offset[3] = h5_param.start_stoke;
+        }
+        if (cinfo.stokes < extent[3]) 
+            { kdu_error e; e << "The number of available stokes in the HDF5 "
+            "files is less than requested."; }
+        for (int i = 4; i < cinfo.naxis; ++i) {
+            offset[i] = 0;
+            extent[i] = 1;
+            if (dims_dataset[i] > 1)
+                { kdu_error e; e << "Dimension " << i+1 << " has a length "
+                " greater than 1."; }
+        }
+    }
+
+//    std::cout << "Requested sub-cube coordinates: " << std::endl;
+//    for (int i = 0; i < cinfo.naxis; ++i)  // Start corner
+//        std::cout << offset[i] << " ";
+//    std::cout << std::endl;
+//    for (int i = 0; i < cinfo.naxis; ++i)  // End corner
+//        std::cout << offset[i] + extent[i] <<  " ";
+//    std::cout << std::endl;
+
+    // Define the memory space that will be used by get
+    // Each call of get returns an image row. So memspace needs to be the size
+    // of a row
+    dims_mem = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+    dims_mem[0] = extent[0]; // read in all the cols (i.e an entire row)
+    for (int i = 1; i < cinfo.naxis; ++i)
+        dims_mem[i] = 1; // all the other dimensions are done one at a time
+    
+    memspace = H5Screate_simple(cinfo.naxis, dims_mem, NULL);
+    if (memspace < 0)
+        { kdu_error e; e << "Unable to create dataspace (memspace)."; }
+
+    // The offset where we place the hyperslab in memory is 0,0,0,...
+    // anything else would just be a waste of memory.
+    hsize_t* offset_mem = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+    for (int i = 0; i < cinfo.naxis; ++i)
+        offset_mem[i] = 0;
+    if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, offset_mem, NULL,
+        dims_mem, NULL) < 0)
+        { kdu_error e; e << "Unable to create hyperslab in memory"; }
+    free(offset_mem);
+
+    // TODO float_minvals and maxvals?
+    // TODO Handling for arguments such as -fprec, remember align_lsbs is the way
+    // you handle getting rid of the precision.
+    
+    // Don't know what the below is for
+    int num_colours = 1;
+    int colour_space_confidence = 0;
+    jp2_colour_space colour_space = JP2_sLUM_SPACE;
+    bool has_premultiplied_alpha = false;
+    bool has_unassociated_alpha = false;
+
+    if (next_comp_idx == 0)
+        dims.set_colour_info(num_colours,
+                             has_premultiplied_alpha,
+                             has_unassociated_alpha,
+                             colour_space_confidence,
+                             colour_space);
+
+    // Add components
+    for (int n = 0; n < num_components; ++n) {
+        dims.add_component(extent[1], extent[0], precision, is_signed,
+                next_comp_idx);
+        next_comp_idx++;
+    }
+
+    std::cout << num_components << std::endl;
+    first_comp_idx = next_comp_idx;
+
+    offset_out = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+    for (int i = 0; i < cinfo.naxis; ++i) {
+        offset_out[i] = offset[i];
+    }
+
+    num_unread_rows = extent[1] * extent[2] * extent[3];
+    vflip = true;
+    std::cout << "Finished constructing hdf5_in" << std::endl;
+} 
+
+/*****************************************************************************/
+/*                               hdf5_in::~hdf5_in                           */
+/*****************************************************************************/
+
+hdf5_in::~hdf5_in()
+{
+    if ((num_unread_rows > 0) || (incomplete_lines != NULL))
+    { kdu_warning w;
+        w << "Not all rows of image component "
+        << first_comp_idx << " were consumed!";
+    }
+    image_line_buf *tmp;
+    while ((tmp=incomplete_lines) != NULL)
+    { incomplete_lines = tmp->next; delete tmp; }
+    while ((tmp=free_lines) != NULL)
+    { free_lines = tmp->next; delete tmp; }
+    
+    free(offset);
+    free(extent);
+    free(dims_mem);
+    free(offset_out);
+    
+    if (H5Tclose(datatype) < 0 || 
+        H5Dclose(dataset) < 0 ||
+        H5Sclose(dataspace) < 0 || //closing unopened space possible
+        H5Sclose(memspace) < 0 ||  //closing unopened space possible
+        H5Fclose(file) < 0)
+        { kdu_error e; e << "Unable to close HDF5 file succesflly."; }
+}
+
+/*****************************************************************************/
+/*                                 hdf5_in::get                              */
+/*****************************************************************************/
+
+bool
+hdf5_in::get(int comp_idx, // component index. We use components for frames
+             kdu_line_buf &line, 
+             int x_tnum  // tile number, starts from 0. We use tiles for stokes
+             )
+{
+    // In the context of this message the hyperslab will just be the line.
+    int width = line.get_width(); // Number of samples in the line
+    assert((comp_idx >= 0) && (comp_idx < num_components));
+
+    image_line_buf *scan, *prev = NULL;
+    for (scan = incomplete_lines; scan != NULL; prev = scan, scan = scan->next) {
+        assert(scan->next_x_tnum >= x_tnum);
+        if (scan->next_x_tnum == x_tnum)
+            break;
+    }
+    if (scan == NULL) {
+        // Need to read a new image line.
+        assert(x_tnum == 0);
+        if (num_unread_rows == 0)
+           return false;
+        
+        if ((scan = free_lines) == NULL)
+            scan = new image_line_buf(width, sample_bytes);
+
+        // Big enough for padding and expanding bits to bytes
+        free_lines = scan->next;
+        if (prev == NULL)
+            incomplete_lines = scan;
+        else
+            prev->next = scan;
+        scan->accessed_samples = 0;
+        scan->next_x_tnum = 0;
+    
+        // Class of input dataset
+        // Currently reading row by row
+        
+        // We select the hyperslab (cropped image cube) that will be encoded
+        if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, dims_mem, 
+                    NULL) < 0)
+            { kdu_error e; e << "Unable to select cropped hyperslab of dataset in"
+                                "HDF5 file."; }
+    
+        //assert (width == dims_mem[0]);
+
+        switch (cinfo.t_class) { //TODO: extend to all types
+            case H5T_FLOAT: { 
+                // We finally actually read the values from the HDF5 image.
+                float* buffer = (float*) malloc(sizeof(float)*width);
+                if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
+                            H5P_DEFAULT, buffer) < 0)
+                    { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
+                
+                convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
+                        is_signed, 0, 0.5);
+                //convert_TFLOAT_to_ints(buffer, line.get_buf32(), width, 
+                //        precision, is_signed, -0.5, 0.5, sample_bytes);
+                
+                //TODO:put data_out int line buf using one of the float_to_float conversions?
+                free(buffer);
+                break;
+            }
+            default: 
+                kdu_error e; e << "Unimplemented class type."; 
+                break; 
+        }
+        
+        // Incremement position in HDF5 file
+        // Indices represent:
+        // 0 col
+        // 1 row
+        // 2 frame
+        // 3 stoke
+        offset_out[0] = offset[0]; // set col to beginning of next line
+        if (offset_out[1] == offset[1] + extent[1]) { // just read last row in frame
+            offset_out[1] = offset[1]; // set row to beginning of next frame
+            if (cinfo.naxis > 2 && cinfo.depth > 1) {
+                if (offset_out[2] != offset[2] + extent[2]) {
+                    offset_out[2]++; // next frame
+                    ++comp_idx;      // new frame - next component
+                }
+                else if (cinfo.naxis > 3 && cinfo.stokes > 1) {
+                    offset_out[2] = offset[2]; // set to beginning of
+                                               // next stoke
+                    offset_out[3]++; // new stoke
+                    scan->next_x_tnum++; // next tile
+                }
+            }
+        }
+        else
+            offset[1]++; // otherwise just go to next row
+
+        num_unread_rows--;
+    }
+
+    assert((scan->width - scan->accessed_samples) >= width);
+    scan->accessed_samples += scan->width;
+    if (scan->accessed_samples == scan->width) {
+        assert(scan == incomplete_lines);
+        incomplete_lines = scan->next;
+        scan->next = free_lines;
+        free_lines = scan;
+    }
+    
+    return true;
+}
+
+/*****************************************************************************/
+/*                     hdf5_in::parse_hdf5_parameters                        */
+/*****************************************************************************/
+
+bool hdf5_in::parse_hdf5_parameters(kdu_args &args) {
+    const char* string;
+
+    if (args.get_first() != NULL) {
+        // Previous implementation doesn't seem to work as intended.
+        
+        // TODO: This code needs refactoring
+        if (args.find("-iplane") != NULL) {
+            bool succ = true;
+            for (int i = 0; i < 2; ++i) { 
+                const char *string = args.advance();
+                for (int j = 0; j < strlen(string); ++j)
+                    if (!std::isdigit(string[j])) {
+                        { kdu_error e; e << "\"-plane\" argument contains malformed "
+                        "plane specification. Expected to find two comma-seperated "
+                        "non-negative integers, enclosed by curly braces. The second "
+                        "must be larger than the first."; }
+                    }
+                if (i == 0) {
+                    if (sscanf(string, "%ld", &h5_param.start_frame) != 1 ||
+                            h5_param.start_frame < 0)
+                        succ = false;
+                }
+                else {
+                    if (sscanf(string, "%ld", &h5_param.end_frame) != 1 ||
+                            h5_param.end_frame < 0 ||
+                            h5_param.end_frame <= h5_param.start_frame)
+                        succ = false;
+                }
+                if (!succ)
+                    { kdu_error e; e << "\"-plane\" argument contains malformed "
+                        "plane specification. Expected to find two comma-seperated "
+                        "non-negative integers, enclosed by curly braces. The second "
+                        "must be larger than the first."; }
+            }
+            args.advance();
+        }
+
+       
+        //{
+        //    const char *field_sep, *string = args.advance();
+        //    for (field_sep=NULL; string != NULL; string=field_sep)
+        //    {
+        //        if (field_sep != NULL)
+        //        {
+        //            if (*string != ',')
+        //            { kdu_error e; e << "\"-iplane\" argument requires a comma-"
+        //                "separated first and last plane parameters to read."; }
+        //            string++; // Walk past the separator
+        //        }
+        //        if (*string == '\0')
+        //            break;
+        //        if (((field_sep = strchr(string,'}')) != NULL) &&
+        //            (*(++field_sep) == '\0'))
+        //            field_sep = NULL;
+        //        
+        //        if ((sscanf(string,"{%ld,%ld}", &h5_param.start_frame,
+        //                    &h5_param.end_frame) != 2) || (h5_param.start_frame < 1) || 
+        //            (h5_param.end_frame < 1) || (h5_param.start_frame <= h5_param.end_frame))
+        //        { kdu_error e; e << "\"-iplane\" argument contains malformed "
+        //            "plane specification.  Expected to find two comma-separated "
+        //            "integers, enclosed by curly braces.  They must be strictly "
+        //            "positive integers. The second parameter must be larger "
+        //            "than the first one"; }
+        //    }
+        //    args.advance();
+        //}        
+        
+        if (args.find("-istok") != NULL)
+        {
+            const char *field_sep, *string = args.advance();
+            for (field_sep=NULL; string != NULL; string=field_sep)
+            {
+                if (field_sep != NULL)
+                {
+                    if (*string != ',')
+                    { kdu_error e; e << "\"-istok\" argument requires a comma-"
+                        "separated first and last Stok parameters to read."; }
+                    string++; // Walk past the separator
+                }
+                if (*string == '\0')
+                    break;
+                if (((field_sep = strchr(string,'}')) != NULL) &&
+                    (*(++field_sep) == '\0'))
+                    field_sep = NULL;
+
+                if ((sscanf(string,"{%ld,%ld}", &h5_param.start_stoke,
+                            &h5_param.end_stoke) != 2) ||
+                    (h5_param.start_stoke < 1) || (h5_param.end_stoke < 1) || 
+                    (h5_param.start_stoke <= h5_param.end_stoke) || 
+                    (h5_param.start_stoke > 5) ||
+                    (h5_param.end_stoke > 5))
+                { kdu_error e; e << "\"-istok\" argument contains malformed "
+                    "stok specification.  Expected to find two comma-separated "
+                    "integers, enclosed by curly braces.  They must be strictly "
+                    "parameter must be larger than the first one"; }
+            }
+            args.advance();
+        }
+    }
+
+    return true;
 }

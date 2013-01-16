@@ -1002,44 +1002,112 @@ static kdc_file_binding *
   
   if (args.find("-icrop") != NULL)
     {
+      // Edited by Sean Peters, previous iteration didn't seem to work
+      // args.advance() is skipping "{" and "," values and returning each
+      // integer individually
+      // TODO: this implementation currently remains untested for multiple
+      // input files
       kdc_file_binding *file = NULL;
-      const char *field_sep, *string = args.advance();
-      for (field_sep=NULL; string != NULL; string=field_sep)
-        {
-          if (field_sep != NULL)
+      int idx = 0;
+      bool first = true;
+
+      while (const char* string = args.advance()) {
+          first = false;
+          // Ensure the input is an integer
+          bool done = false;
+          for (int i = 0; i < strlen(string); ++i) 
+              if (!std::isdigit(string[i])) {
+                  if (idx == 0 && !first)
+                      done = true;
+                  else
+                    { kdu_error e; e << "\"-icrop\" argument contains malformed "
+                    "cropping specification.  Expected to find four comma-separated "
+                    "integers, enclosed by curly braces.  The first two (y and x "
+                    "offsets must be non-negative) and the last two (height and "
+                    "width) must be strictly positive."; }
+              }
+          if (done) 
+              break;
+            
+          if (idx == 0) {
+              if (file == NULL)
+                  file = files;
+              else
+                  file = files->next;
+          }
+
+          int status = 0;
+          switch (idx) 
             {
-              if (*string != ',')
-                { kdu_error e; e << "\"-icrop\" argument requires a comma-"
-                  "separated list of cropping specifications."; }
-              string++; // Walk past the separator
+              case 0: //crop_y
+                status = sscanf(string, "%d", &(file->cropping.pos.y));
+                if (status != 1 || file->cropping.pos.y < 0)
+                    status = 0;
+              case 1: //crop_x
+                status = sscanf(string, "%d", &(file->cropping.pos.x));
+                if (status != 1 || file->cropping.pos.x < 0)
+                    status = 0;
+              case 2: //crop_height
+                status = sscanf(string, "%d", &(file->cropping.size.y));
+                if (status != 1 || file->cropping.size.y < 0)
+                    status = 0;
+              case 3: //crop_width
+                status = sscanf(string, "%d", &(file->cropping.size.x));
+                if (status != 1 || file->cropping.size.x < 0)
+                    status = 0;
             }
-          if (*string == '\0')
-            break;
-          if (((field_sep = strchr(string,'}')) != NULL) &&
-              (*(++field_sep) == '\0'))
-            field_sep = NULL;
-          if (file == NULL)
-            file = files;
-          else
-            file = file->next;
-          if ((sscanf(string,"{%d,%d,%d,%d}", &(file->cropping.pos.y),
-                      &(file->cropping.pos.x),&(file->cropping.size.y),
-                      &(file->cropping.size.x)) != 4) ||
-              (file->cropping.pos.x < 0) || (file->cropping.pos.y < 0) ||
-              (file->cropping.size.x <= 0) || (file->cropping.size.y <= 0))
+          
+          if (status == 0)
             { kdu_error e; e << "\"-icrop\" argument contains malformed "
-              "cropping specification.  Expected to find four comma-separated "
-              "integers, enclosed by curly braces.  The first two (y and x "
-              "offsets must be non-negative) and the last two (height and "
-              "width) must be strictly positive."; }
-        }
-      if (file == NULL)
-        { kdu_error e; e << "\"-icrop\" argument requires at least one "
-          "cropping specification!"; }
+            "cropping specification.  Expected to find four comma-separated "
+            "integers, enclosed by curly braces.  The first two (y and x "
+            "offsets must be non-negative) and the last two (height and "
+            "width) must be strictly positive."; }
+
+          idx==3?idx=0:idx++;
+      }
       while (file->next != NULL)
         { file->next->cropping = file->cropping; file=file->next; }
-      args.advance();
     }
+
+
+//      for (field_sep=NULL; string != NULL; string=field_sep)
+//        {
+//          if (field_sep != NULL)
+//            {
+//              if (*string != ',')
+//                { kdu_error e; e << "\"-icrop\" argument requires a comma-"
+//                  "separated list of cropping specifications."; }
+//              string++; // Walk past the separator
+//            }
+//          if (*string == '\0')
+//            break;
+//          if (((field_sep = strchr(string,'}')) != NULL) &&
+//              (*(++field_sep) == '\0'))
+//            field_sep = NULL;
+//          if (file == NULL)
+//            file = files;
+//          else
+//            file = file->next;
+//          std::cout << string << "\n";
+//          if ((sscanf(string,"{%d,%d,%d,%d}", &(file->cropping.pos.y),
+//                      &(file->cropping.pos.x),&(file->cropping.size.y),
+//                      &(file->cropping.size.x)) != 4) ||
+//              (file->cropping.pos.x < 0) || (file->cropping.pos.y < 0) ||
+//              (file->cropping.size.x <= 0) || (file->cropping.size.y <= 0))
+//            { kdu_error e; e << "\"-icrop\" argument contains malformed "
+//              "cropping specification.  Expected to find four comma-separated "
+//              "integers, enclosed by curly braces.  The first two (y and x "
+//              "offsets must be non-negative) and the last two (height and "
+//              "width) must be strictly positive."; }
+//        }
+//      if (file == NULL)
+//        { kdu_error e; e << "\"-icrop\" argument requires at least one "
+//          "cropping specification!"; }
+//      while (file->next != NULL)
+//        { file->next->cropping = file->cropping; file=file->next; }
+//      args.advance();
+//    }
 
   if (args.find("-o") != NULL)
     {
@@ -2595,7 +2663,6 @@ static kdu_long
      found with `compress_single_threaded'. */
 {
   // Construct multi-threaded processing environment if required
-    std::cout << "compress_multi_threaded" << std::endl << std::flush;
   kdu_thread_env env;
   env.create();
   int nt=num_threads-1, nxt=num_xform_threads, nct=num_coding_threads;
@@ -2725,7 +2792,6 @@ static kdu_long
     // call to `kdu_thread_entity::handle_exception' for maximum robustness.
   }
 
-  std::cout << "after" << std::endl << std::flush;
   // Cleanup processing environment
   env.join(NULL,true); // Wait until all internal processing is complete
   env.cs_terminate(codestream); // Terminates background codestream processing
@@ -2743,7 +2809,6 @@ static kdu_long
     pretty_cout << "\tInitiating final codestream flush ...\n";
   codestream.flush(layer_bytes,num_layer_specs,layer_thresholds,
                    true,record_info_in_comseg,rate_tolerance);
-  std::cout << "sample_processing_bytes " << sample_processing_bytes << std::endl;
   return sample_processing_bytes;
 }
 
@@ -3168,8 +3233,6 @@ int main(int argc, char *argv[])
                      iscan->offset,quiet);
 
       iscan->num_components = num_source_components - iscan->first_comp_idx;
-      std::cout << "idims.num_comp: " << idims.get_num_components() << std::endl;
-      std::cout << "idims.bit_depth: " << idims.get_bit_depth(0) << std::endl;
       //idims.set_bit_depth(0,16);
       if (iscan == inputs)
         extra_flip = flip;
