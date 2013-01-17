@@ -784,6 +784,8 @@ public: // Member functions
     ~hdf5_in();
     bool get(int comp_idx, kdu_line_buf &line, int x_tnum);
 private: // Members describing the organization of the FITS data
+    float min, max; // TODO float min max calculator
+
     hdf5_param h5_param;;
     hid_t file; // handles
     hid_t dataset;
@@ -805,10 +807,11 @@ private: // Members describing the organization of the FITS data
     // SEAN: can it? (at least with ICRAR's format?)
     //double float_minvals; // When HDF5 file contains floating-point samples
     //double float_maxvals; // When HDF5 file contains floating-point samples
-    kdu_uint16 bitspersample;
+    //kdu_uint16 bitspersample;
     kdu_simple_file_source src;
    
     bool is_signed; // Whether the data is signed or not
+    bool littlendian; // true if data order is littlendian
     int first_comp_idx;
     int num_components; // May be > `samplesperpixel' if there is a palette
     int precision;

@@ -2,7 +2,7 @@
 APPS_PATH=/home/speters/kakadu-v7/2beta-01265L/apps/make/
 KDU_LIBS=-lkdu_v72R -lkdu_a72R -lkdu -lm -lnsl -lkdu_aux
 FITS_LIB=-lcfitsio
-HDF5_LIBS=-lhdf5_cpp -lhdf5_hl_cpp -lhdf5 -lhdf5_hl -lz -lsz
+HDF5_LIBS=-lhdf5 -lhdf5_hl -lz -lsz
 LIBS=$(KDU_LIBS) $(FITS_LIB) $(HDF5_LIBS)
 
 fits_to_j2k: fits_to_j2k.cpp fits_image_in.o # roi_source.o pallet.o

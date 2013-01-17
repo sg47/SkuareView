@@ -64,6 +64,7 @@ other file formats without affecting the rest of the system.
 // System includes
 #include <iostream>
 #include <string.h>
+#include <time.h>
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
@@ -4151,6 +4152,8 @@ hdf5_in::hdf5_in(const char *fname,
     // Initialize the state incase we need to cleanup prematurely
     kdu_message_formatter out(&cout_message);
     incomplete_lines = NULL;
+    min = 100000000; //TODO: min/max float documented in get
+    max = -100000000;
     free_lines = NULL;
     num_unread_rows = 0;
    
@@ -4164,6 +4167,8 @@ hdf5_in::hdf5_in(const char *fname,
     
     // Open the dataset
     dataset = H5Dopen(file, "full_cube", H5P_DEFAULT); // TODO: dynamic data set name
+                                                       // this would conflict with
+                                                       // min/max idea
     if (dataset < 0) 
         { kdu_error e; e << "Unable to open dataset in HDF5 file."; }
     
@@ -4180,12 +4185,16 @@ hdf5_in::hdf5_in(const char *fname,
     // TODO: should use a bool rather than the HDF5 datatype
     // Get the data order (i.e littlendian or bigendian)
     order = H5Tget_order(datatype); 
-    if (order == H5T_ORDER_ERROR) 
+    if (order == H5T_ORDER_LE)
+        littlendian = true;
+    else if (order == H5T_ORDER_BE)
+        littlendian = false;
+    else
         { kdu_error e; e << "Unable to identify data order of dataset in HDF5 "
                             "file."; }
     
     // Identify if the data is signed
-    is_signed = false;
+    is_signed = true; // floats are always signed
     if (cinfo.t_class != H5T_FLOAT) { // TODO: When implement support for further
                                       // classes. This will be extended.
         int is_signed_h5 = H5Tget_sign(datatype);
@@ -4210,9 +4219,12 @@ hdf5_in::hdf5_in(const char *fname,
     else if (precision != 8 * sample_bytes)
         { kdu_error e; e << "Padding in sample bytes. Handling for this is "
                             "unimplemented"; } // TODO
-    bitspersample = precision;
 
     // TODO: implement forced precision
+    bool align_lsbs = false;
+    int forced_prec = dims.get_forced_precision(next_comp_idx, align_lsbs);
+    if (forced_prec > 0)
+        precision = forced_prec;
 
     // Get the dataspace of the the dataset
     dataspace = H5Dget_space(dataset);
@@ -4279,6 +4291,7 @@ hdf5_in::hdf5_in(const char *fname,
     }
     // TODO: Documentation on get_cropping is poor, as such if cropping has not been
     // specified it is only my current assumption that it will return false
+    // I currently can't test the above as my only example file is over 1TB
     else { // No cropping specified, default is the whole image
         offset[0] = offset[1] = 0;
         extent[0] = cinfo.width;
@@ -4330,14 +4343,6 @@ hdf5_in::hdf5_in(const char *fname,
         }
     }
 
-//    std::cout << "Requested sub-cube coordinates: " << std::endl;
-//    for (int i = 0; i < cinfo.naxis; ++i)  // Start corner
-//        std::cout << offset[i] << " ";
-//    std::cout << std::endl;
-//    for (int i = 0; i < cinfo.naxis; ++i)  // End corner
-//        std::cout << offset[i] + extent[i] <<  " ";
-//    std::cout << std::endl;
-
     // Define the memory space that will be used by get
     // Each call of get returns an image row. So memspace needs to be the size
     // of a row
@@ -4360,11 +4365,13 @@ hdf5_in::hdf5_in(const char *fname,
         { kdu_error e; e << "Unable to create hyperslab in memory"; }
     free(offset_mem);
 
-    // TODO float_minvals and maxvals?
-    // TODO Handling for arguments such as -fprec, remember align_lsbs is the way
-    // you handle getting rid of the precision.
+    // TODO float_minvals and maxvals
+    // a note of this has been made in hdf5_in::get
+    // the only way I can currently see this solved is either by one iteration
+    // over the entire file to find min and max (bad)
+    // adjust icrar's hdf5 format to include a dataset with these to values 
+    // included.
     
-    // Don't know what the below is for
     int num_colours = 1;
     int colour_space_confidence = 0;
     jp2_colour_space colour_space = JP2_sLUM_SPACE;
@@ -4378,6 +4385,8 @@ hdf5_in::hdf5_in(const char *fname,
                              colour_space_confidence,
                              colour_space);
 
+    first_comp_idx = next_comp_idx;
+
     // Add components
     for (int n = 0; n < num_components; ++n) {
         dims.add_component(extent[1], extent[0], precision, is_signed,
@@ -4385,17 +4394,17 @@ hdf5_in::hdf5_in(const char *fname,
         next_comp_idx++;
     }
 
-    std::cout << num_components << std::endl;
-    first_comp_idx = next_comp_idx;
-
     offset_out = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
     for (int i = 0; i < cinfo.naxis; ++i) {
         offset_out[i] = offset[i];
     }
 
-    num_unread_rows = extent[1] * extent[2] * extent[3];
-    vflip = true;
-    std::cout << "Finished constructing hdf5_in" << std::endl;
+    if (cinfo.naxis > 3)
+        num_unread_rows = extent[1] * extent[2] * extent[3];
+    else if (cinfo.naxis == 2)
+        num_unread_rows = extent[1] * extent[2];
+    else
+        num_unread_rows = extent[1] * extent[2];
 } 
 
 /*****************************************************************************/
@@ -4422,8 +4431,8 @@ hdf5_in::~hdf5_in()
     
     if (H5Tclose(datatype) < 0 || 
         H5Dclose(dataset) < 0 ||
-        H5Sclose(dataspace) < 0 || //closing unopened space possible
-        H5Sclose(memspace) < 0 ||  //closing unopened space possible
+        H5Sclose(dataspace) < 0 || 
+        H5Sclose(memspace) < 0 || 
         H5Fclose(file) < 0)
         { kdu_error e; e << "Unable to close HDF5 file succesflly."; }
 }
@@ -4441,7 +4450,7 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
     // In the context of this message the hyperslab will just be the line.
     int width = line.get_width(); // Number of samples in the line
     assert((comp_idx >= 0) && (comp_idx < num_components));
-
+    
     image_line_buf *scan, *prev = NULL;
     for (scan = incomplete_lines; scan != NULL; prev = scan, scan = scan->next) {
         assert(scan->next_x_tnum >= x_tnum);
@@ -4470,6 +4479,7 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
         // Currently reading row by row
         
         // We select the hyperslab (cropped image cube) that will be encoded
+
         if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, dims_mem, 
                     NULL) < 0)
             { kdu_error e; e << "Unable to select cropped hyperslab of dataset in"
@@ -4477,20 +4487,34 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
     
         //assert (width == dims_mem[0]);
 
-        switch (cinfo.t_class) { //TODO: extend to all types
+        switch (cinfo.t_class) { // TODO: extend to all types (don't have other 
+                                 // test data at the moment.
             case H5T_FLOAT: { 
                 // We finally actually read the values from the HDF5 image.
                 float* buffer = (float*) malloc(sizeof(float)*width);
+                
                 if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
                             H5P_DEFAULT, buffer) < 0)
                     { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
                 
-                convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
-                        is_signed, 0, 0.5);
-                //convert_TFLOAT_to_ints(buffer, line.get_buf32(), width, 
-                //        precision, is_signed, -0.5, 0.5, sample_bytes);
+                if (line.is_absolute())
+                    convert_TFLOAT_to_ints(buffer, line.get_buf32(), width,
+                            precision, true, -0.5, 0.5, sample_bytes);
+                else
+                    convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
+                        is_signed, -0.00139705, 0.00171688);
+
+                // TODO: HDF5 has no way of determining the min or max float value
+                // this is important for normalizing the floats for Kadaku. The
+                // below is a way to get the values in a trial and then hardcode
+                // for the next use.
+                //for (int i = 0; i < width; ++i) {
+                //    if (buffer[i] < min)
+                //      min = buffer[i];
+                //    if (buffer[i] > max)
+                //        max = buffer[i];
+                //}
                 
-                //TODO:put data_out int line buf using one of the float_to_float conversions?
                 free(buffer);
                 break;
             }
@@ -4521,9 +4545,9 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
                 }
             }
         }
-        else
-            offset[1]++; // otherwise just go to next row
-
+        else {
+            offset_out[1]++; // otherwise just go to next row
+        }
         num_unread_rows--;
     }
 
@@ -4535,7 +4559,6 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
         scan->next = free_lines;
         free_lines = scan;
     }
-    
     return true;
 }
 
