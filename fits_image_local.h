@@ -786,6 +786,7 @@ public: // Member functions
 private: // Members describing the organization of the FITS data
     float min, max; // TODO float min max calculator
 
+    double duration;
     hdf5_param h5_param;;
     hid_t file; // handles
     hid_t dataset;
