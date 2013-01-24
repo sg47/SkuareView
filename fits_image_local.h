@@ -818,6 +818,7 @@ private: // Members describing the organization of the FITS data
     int precision;
     int sample_bytes; // After expanding any palette
     int num_unread_rows; // Always starts at `rows', even with cropping
+    int total_rows; // Used for progress bar
     image_line_buf *incomplete_lines; // Each "sample" represents a full pixel
     image_line_buf *free_lines;
     //--------------------------------------------------------------------------
