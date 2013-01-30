@@ -1,2 +1,0 @@
--SkuareView-NGAS-plugin
-=======================
