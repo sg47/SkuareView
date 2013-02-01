@@ -1,15 +1,18 @@
 /*****************************************************************************/
 //  
-//  @file: fits_local.h
+//  @file: hdf5_local.h
 //  Project: Skuareview-NGAS-plugin
 //
 //  @author Slava Kitaeff
 //  @date 29/07/12.
 //  @brief The The file contains the definitions of types and classes
-//  @brief for the FITS image format.
+//  @brief for the HDF5 image format.
 //  Copyright (c) 2012 University of Western Australia. All rights reserved.
 //
 /*****************************************************************************/
+
+// Specific to ICRAR's hdf5 image format.
+#define DATASET_NAME "full_cube"
 
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
 #include "kdu_elementary.h"
@@ -38,7 +41,6 @@ typedef struct {
  * Structure for defining essential properties of a HDF5 datacube.
  */
 typedef struct {
-    int type;
     long width; // Image width
     long height; // Image height
     long depth; // Image depth. Arbitrary for 2D images
@@ -60,11 +62,8 @@ public: // Member functions
     ~hdf5_in();
     bool get(int comp_idx, kdu_line_buf &line, int x_tnum);
 private: // Members describing the organization of the FITS data
-    float min, max; // TODO float min max calculator
-
-    double duration;
     hdf5_param h5_param;;
-    hid_t file; // handles
+    hid_t file; // File handle for the HDF5 handle
     hid_t dataset;
     hid_t dataspace;
     hid_t datatype;
@@ -81,7 +80,6 @@ private: // Members describing the organization of the FITS data
 
     hdf5_cube_info cinfo;
         
-    // SEAN: can it? (at least with ICRAR's format?)
     double float_minvals; // When HDF5 file contains floating-point samples
     double float_maxvals; // When HDF5 file contains floating-point samples
     //kdu_uint16 bitspersample;
@@ -100,4 +98,48 @@ private: // Members describing the organization of the FITS data
     //--------------------------------------------------------------------------
 private: // Members which are affected by (or support) cropping
     bool parse_hdf5_parameters(kdu_args &args);
+};
+
+/*****************************************************************************/
+/*                             class hdf5_out                                */
+/*****************************************************************************/
+
+class hdf5_out : public kdu_image_out_base {
+  public: // Member functions
+    hdf5_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
+            bool quiet);
+    ~hdf5_out();
+    void put(int comp_idx, kdu_line_buf &line, int x_tnum);
+  private: // Data
+    hdf5_cube_info cinfo; // Contains the essential structural information for
+                          // an HDF5 image cube
+    hid_t file; // File handle for the HDF5 file
+    hid_t dataset;
+    hid_t dataspace;
+    hid_t datatype;
+    hid_t filespace;
+    hid_t memspace;
+    hid_t cparms;
+    H5T_order_t order;
+
+    hsize_t* orig_dims; // Dimensions of origional JPEG2000 image
+    hsize_t* dims_mem; // The hyperslab dimension we select for each iteration
+                       // of hdf5_out::put
+    hsize_t* dest_dims; // Dimensions of destination HDF5 image
+    hsize_t* offset; // Offset within the JPEG2000 image
+
+    int first_comp_idx;
+    int num_components;
+    int precision;
+    bool forced_align_lsbs;
+    int *orig_precision; // All equal to above unless `precision' is forced.
+    bool *is_signed; // One entry for each component
+    int scanline_width, unpacked_samples;
+    int sample_bytes, pixel_bytes, row_bytes;
+    bool pre_pack_littlendian; // Scanline byte order prior to packing
+    image_line_buf *incomplete_lines; // Each "sample" represents a full pixel
+    image_line_buf *free_lines;
+    int num_unwritten_rows;
+    kdu_simple_file_target out;
+    int initial_non_empty_tiles; // tnum >= this implies empty; 0 until we know
 };

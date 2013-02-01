@@ -4,12 +4,17 @@
 # Had to edit kdu_compress.cpp image_in.cpp kdu_image.h (in apps and all includes),
 # changes are tagged with SkuareView-plugin
 
-PROJ=skuareview-plugin
-OBJS=image_in.o fits_in.o hdf5_in.o roi_sources.o palette.o
+ENC=skuareview-encode
+DEC=skuareview-decode
+
+E_OBJS=image_in.o fits_in.o hdf5_in.o roi_sources.o palette.o
+D_OBJS=image_out.o hdf5_out.o palette.o
+OBJS=$(E_OBJS) $(D_OBJS)
 
 # Directory absolute paths
 APPS=/home/speters/kakadu-v7/v7_2-01265L/apps
 COMPRESS=$(APPS)/kdu_compress
+EXPAND=$(APPS)/kdu_expand
 IMAGE=$(APPS)/image
 
 # Libraries
@@ -19,11 +24,19 @@ HDF5_LIBS=-lhdf5 -lhdf5_hl -lz -lsz
 CASA_LIBS=
 LIBS=$(KDU_LIBS) $(FITS_LIB) $(HDF5_LIBS) $(CASA_LIBS)
 
-$(PROJ): $(COMPRESS)/kdu_compress.cpp $(OBJS)
-	g++ $(COMPRESS)/kdu_compress.cpp -o $(PROJ) $(OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
+all: $(ENC) $(DEC)
 
-image_in.o: $(APPS)/image/image_in.cpp 
+$(ENC): $(COMPRESS)/kdu_compress.cpp $(E_OBJS)
+	g++ $(COMPRESS)/kdu_compress.cpp -o $(ENC) $(E_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
+
+$(DEC): $(EXPAND)/kdu_expand.cpp $(D_OBJS)
+	g++ $(EXPAND)/kdu_expand.cpp -o $(DEC) $(D_OBJS) $(LIBS) -DKSA_IMG_FORMATS=1
+
+image_in.o: $(IMAGE)/image_in.cpp 
 	g++ -c $(IMAGE)/image_in.cpp $(KDU_LIBS) -DSKA_IMG_FORMATS=1
+
+image_out.o: $(IMAGE)/image_out.cpp
+	g++ -c $(IMAGE)/image_out.cpp $(KDU_LIBS) -DSKA_IMG_FORMATS=1
 
 hdf5_in.o: hdf5_in.cpp 
 	g++ -c hdf5_in.cpp $(LIBS)
@@ -38,4 +51,4 @@ palette.o: $(APPS)/image/palette.cpp
 	g++ -c $(IMAGE)/palette.cpp 
 
 clean:
-	rm -rf *.o fits_to_j2k
+	rm -rf *.o skuareview-*

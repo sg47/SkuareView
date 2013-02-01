@@ -160,8 +160,6 @@ hdf5_in::hdf5_in(const char *fname,
 {
     // Initialize the state incase we need to cleanup prematurely
     incomplete_lines = NULL;
-    min = 100000000; //TODO: min/max float documented in get
-    max = -100000000;
     free_lines = NULL;
     num_unread_rows = 0;
    
@@ -255,10 +253,10 @@ hdf5_in::hdf5_in(const char *fname,
     // Input dimensions (FREQ,DEC,RA) as (x,y,z)
     // Output  dimensions (RA,DEC,FREQ) as (x,y,z) 
 
-    cinfo.height = (unsigned long)dims_dataset[2];
-    cinfo.width = (unsigned long)dims_dataset[1];
+    cinfo.width = (unsigned long)dims_dataset[2];
+    cinfo.height = (unsigned long)dims_dataset[1];
         
-    std::cout << "HDF5 image's dimensions:\n"
+    std::cout << "HDF5 image dimensions:\n"
            "rank = " << (unsigned int)(cinfo.naxis) << "\n" << 
            "rows = " << (unsigned int)(cinfo.height) << "\n" << 
            "cols = " << (unsigned int)(cinfo.width) << "\n";  
@@ -413,6 +411,7 @@ hdf5_in::hdf5_in(const char *fname,
         num_unread_rows = extent[1]; 
     total_rows = num_unread_rows;
 } 
+
 
 /*****************************************************************************/
 /*                               hdf5_in::~hdf5_in                           */
@@ -623,32 +622,36 @@ bool hdf5_in::parse_hdf5_parameters(kdu_args &args) {
            float_maxvals = 0.00171688;
         }
 
-        if (args.find("-iplane") != NULL) {
-            std::cout << "here" << std::endl;
-            for (int i = 0; i < 2; ++i) { 
-                const char *string = args.advance();
-                bool succ = true;
-                for (int j = 0; j < strlen(string); ++j)
-                    if (!std::isdigit(string[j])) 
-                        succ = false;
-                if (!succ || (i == 0 && 
-                        (sscanf(string, "%ld", &h5_param.start_frame) != 1 ||
-                        h5_param.start_frame < 0)))
-                    succ = false;
-                else if (!succ || (i == 1 && 
-                        (sscanf(string, "%ld", &h5_param.end_frame) != 1 ||
-                        h5_param.end_frame < 0 ||
-                        h5_param.end_frame <= h5_param.start_frame)))
-                    succ = false;
+        if (args.find("-iplane") != NULL)
+        {
+            const char *field_sep, *string = args.advance();
+            for (field_sep=NULL; string != NULL; string=field_sep)
+            {
+                std::cout << string << std::endl;
+                if (field_sep != NULL)
+                {
+                    if (*string != ',')
+                    { kdu_error e; e << "\"-iplane\" argument requires a comma-"
+                        "separated first and last plane parameters to read."; }
+                    string++; // Walk past the separator
+                }
+                if (*string == '\0')
+                    break;
+                if (((field_sep = strchr(string,'}')) != NULL) &&
+                    (*(++field_sep) == '\0'))
+                    field_sep = NULL;
                 
-                if (!succ)
-                    { kdu_error e; e << "\"-plane\" argument contains malformed "
-                        "plane specification. Expected to find two comma-seperated "
-                        "non-negative integers, enclosed by curly braces. The second "
-                        "must be larger than the first."; }
+                if ((sscanf(string,"{%ld,%ld}", &h5_param.start_frame,
+                            &h5_param.end_frame) != 2) || (h5_param.start_frame < 1) || 
+                    (h5_param.end_frame < 1) || (h5_param.start_frame >= h5_param.end_frame))
+                { kdu_error e; e << "\"-iplane\" argument contains malformed "
+                    "plane specification.  Expected to find two comma-separated "
+                    "integers, enclosed by curly braces.  They must be strictly "
+                    "positive integers. The second parameter must be larger "
+                    "than the first one"; }
             }
             args.advance();
-        }
+        }        
 
         if (args.find("-istok") != NULL)
         {
