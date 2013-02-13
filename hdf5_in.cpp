@@ -85,19 +85,17 @@ static void
 convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num, 
                          bool is_signed, double minval, double maxval)
 {
+    // Floats are always signed but I left this in anyway
     float scale, offset=0.0;
     float limmin=-0.75, limmax=0.75;
-    if (is_signed)
-        scale = 0.5 / (((maxval+minval) > 0.0)?maxval:(-minval));
-    else
-    {
-        scale = 1.0 / maxval;
-        offset = -0.5;
-    }
+    scale = 1.0 / fabs(maxval - minval);
+    offset = -0.5;
 
     for (int i = 0; i< num; i++)
     {
-        float fval = (float)(src[i] * scale + offset);
+        //std::cout << "HDF5 SOURCE: " << src[i] << std::endl;
+        float fval = (float)((src[i] - minval) * scale + offset);
+        //std::cout << "JPX SINK: " << fval << std::endl;
         fval = (fval > limmin)?fval:limmin;
         fval = (fval < limmax)?fval:limmax;
         dest[i].fval = fval;
@@ -114,13 +112,10 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
 {
     double scale, offset=0.0;
     double limmin=-0.75, limmax=0.75;
-    if (is_signed)
-      scale = 0.5 / (((maxval+minval) > 0.0)?maxval:(-minval));
-    else
-      {
-        scale = 1.0 / maxval;
-        offset = -0.5;
-      }
+
+    scale = 1.0 / fabs(maxval - minval);
+    offset = -0.5;
+
     scale *= (double)((1<<precision)-1);
     offset *= (double)(1<<precision);
     limmin *= (double)(1<<precision);
@@ -128,12 +123,12 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
     if (sample_bytes == 4)
       { // Transfer floats to ints
           for (int i = 0; i<num; ++i)
-            {
-              double fval = (float)(src[i] * scale + offset);
+          {
+              double fval = (float)((src[i] - minval) * scale + offset);
               fval = (fval > limmin)?fval:limmin;
               fval = (fval < limmax)?fval:limmax;
               dest[i].ival = (kdu_int32) fval;
-            }
+          }
       }
     else if (sample_bytes == 8)
       { // Transfer doubles to ints, with some scaling
@@ -163,7 +158,7 @@ hdf5_in::hdf5_in(const char *fname,
     free_lines = NULL;
     num_unread_rows = 0;
    
-    if (!parse_hdf5_parameters(args)) 
+    if (!parse_hdf5_parameters(args, dims)) 
         { kdu_error e; e << "Unable to parse HDF5 parameters"; }
 
     // Open the file
@@ -317,7 +312,7 @@ hdf5_in::hdf5_in(const char *fname,
         // Cropping was specified on this dimension
         else {
             extent[2] = abs(h5_param.end_frame - h5_param.start_frame);
-            offset[2] = h5_param.start_frame;
+            offset[2] = h5_param.start_frame - 1;
         }
         if (cinfo.depth < extent[2])
             { kdu_error e; e << "The number of available frames in the HDF5 file"
@@ -453,10 +448,6 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
              int x_tnum  // tile number, starts from 0. We use tiles for stokes
              )
 {
-    // Progress 
-    //if (num_unread_rows % (total_rows / 100) == 0 && num_unread_rows != 0)
-        //std::cout << 100 * (total_rows - num_unread_rows) / total_rows << "%\n";
-
     // In the context of this message the hyperslab will just be the line.
     int width = line.get_width(); // Number of samples in the line
     assert((comp_idx >= 0) && (comp_idx < num_components));
@@ -587,9 +578,8 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
 /*                     hdf5_in::parse_hdf5_parameters                        */
 /*****************************************************************************/
 
-bool hdf5_in::parse_hdf5_parameters(kdu_args &args) {
-    const char* string;
-
+bool hdf5_in::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
+{
     if (args.get_first() != NULL) {
         
         if (args.find("-minmax") != NULL)
@@ -616,10 +606,9 @@ bool hdf5_in::parse_hdf5_parameters(kdu_args &args) {
             }
             args.advance();
         }
-        // TODO: This is hardcoded in just to testing simpler
         else {
-           float_minvals = -0.00139705;
-           float_maxvals = 0.00171688;
+           float_minvals = H5_FLOAT_MIN;
+           float_maxvals = H5_FLOAT_MAX;
         }
 
         if (args.find("-iplane") != NULL)
@@ -627,7 +616,6 @@ bool hdf5_in::parse_hdf5_parameters(kdu_args &args) {
             const char *field_sep, *string = args.advance();
             for (field_sep=NULL; string != NULL; string=field_sep)
             {
-                std::cout << string << std::endl;
                 if (field_sep != NULL)
                 {
                     if (*string != ',')
@@ -685,6 +673,44 @@ bool hdf5_in::parse_hdf5_parameters(kdu_args &args) {
             args.advance();
         }
     }
+
+    /* Put import parameter details into JPX header as a reference */
+
+    kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,
+                            0x70,0x09,0x11,0xE2,
+                            0xBC,0xFD,0x08,0x00,
+                            0x20,0x0C,0x9A,0x66};
+
+    kdu_byte* box_buf = (kdu_byte*) malloc (BUFSIZ); // Should be plenty
+    int box_buf_idx = 0, len = 0;
+    char* tmp = (char*) malloc (sizeof(char) * 128);
+    len = sprintf(tmp, "minfloat:%f,", float_minvals);
+    for (int i = 0; i < len; ++i, ++box_buf_idx)
+        box_buf[box_buf_idx] = tmp[i];
+    len = sprintf(tmp, "maxfloat:%f,", float_maxvals);
+    for (int i = 0; i < len; ++i, ++box_buf_idx)
+        box_buf[box_buf_idx] = tmp[i];
+    len = sprintf(tmp, "start_frame:%d,", h5_param.start_frame);
+    for (int i = 0; i < len; ++i, ++box_buf_idx)
+        box_buf[box_buf_idx] = tmp[i];
+    len = sprintf(tmp, "end_frame:%d,", h5_param.end_frame);
+    for (int i = 0; i < len; ++i, ++box_buf_idx)
+        box_buf[box_buf_idx] = tmp[i];
+    len = sprintf(tmp, "start_stoke:%d,", h5_param.start_stoke);
+    for (int i = 0; i < len; ++i, ++box_buf_idx)
+        box_buf[box_buf_idx] = tmp[i];
+    len = sprintf(tmp, "end_stoke:%d,", h5_param.end_frame);
+    for (int i = 0; i < len; ++i, ++box_buf_idx)
+        box_buf[box_buf_idx] = tmp[i];
+
+    box_buf_idx--;
+
+    jp2_output_box *h5_box = dims.add_source_metadata(jp2_uuid_4cc);
+
+    h5_box->write(h5_uuid, 16); // unique identifier
+    h5_box->write(box_buf, box_buf_idx);
+
+    free(box_buf);
 
     return true;
 }

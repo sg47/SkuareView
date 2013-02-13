@@ -1,5 +1,22 @@
+/*****************************************************************************/
+//
+//  @file: hdf5_in.cpp
+//  Project: SkuareView-NGAS-plugin
+//
+//  @author Sean Peters
+//  @date 01/02/2013
+//  @brief Implements file writing from the HDF5 file format specified by 
+//         ICRAR. Readily extendible to include further features.
+// 
+//  Copyright (c) 2012 University of Western Australia. All rights reserved.
+//
+/******************************************************************************/
+
 // System includes
 #include <iostream>
+#include <string>
+#include <vector>
+#include <sstream>
 #include <string.h>
 #include <math.h>
 #include <assert.h>
@@ -10,6 +27,79 @@
 #include "kdu_image.h"
 #include "image_local.h"
 #include "hdf5_local.h"
+
+/*****************************************************************************/
+/* STATIC                  convert_floats_to_TFLOAT                          */
+/*****************************************************************************/
+
+static void
+convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num, 
+                         double minval, double maxval)
+{
+    float scale = fabs(maxval-minval);
+    float offset = minval;   
+
+    for (int i = 0; i < num; i++)
+    {
+        //std::cout << "JPX SOURCE: " << src[i].fval << std::endl;
+        double fval = (double)((src[i].fval + 0.5) * scale + offset);
+        //std::cout << "HDF5 SINK: " << fval << std::endl;
+        fval = (fval > minval)?fval:minval;
+        fval = (fval < maxval)?fval:maxval;
+        dest[i]= fval;
+    }
+}
+
+/*****************************************************************************/
+/* STATIC                  convert_ints_to_TFLOAT                          */
+/*****************************************************************************/
+
+static void
+convert_ints_to_TFLOAT(kdu_sample32 *src, float *dest, int num, 
+                         int precision, double minval, double maxval)
+{
+    double scale = 1.0 / fabs(maxval - minval);
+    double offset_jpx = -0.5;
+    double offset_h5 = minval;
+
+    scale *= (double)((1<<precision)-1);
+    offset_jpx *= (double)(1<<precision);
+
+    for (int i = 0; i < num; i++)
+    {
+        std::cout << "JPX SOURCE: " << src[i].fval << std::endl;
+        std::cout << "offset_jpx: " << offset_jpx << std::endl;
+        std::cout << "scale: " << scale << std::endl;
+        std::cout << "offset_h5: " << offset_h5 << std::endl;
+        double fval = (double)((src[i].ival + offset_jpx) * scale + offset_h5);
+        std::cout << "HDF5 SINK: " << fval << std::endl;
+        fval = (fval > minval)?fval:minval;
+        fval = (fval < maxval)?fval:maxval;
+        dest[i]= fval;
+    }
+}
+
+/*****************************************************************************/
+/* STATIC                         str_split                                  */
+/*****************************************************************************/
+
+static std::vector<std::string> 
+&str_split(const std::string &s, char delim, std::vector<std::string> &elems) 
+{
+    std::stringstream ss(s);
+    std::string item;
+    while(std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+    return elems;
+}
+
+static std::vector<std::string> 
+str_split(const std::string &s, char delim) 
+{
+    std::vector<std::string> elems;
+    return str_split(s, delim, elems);
+}
 
 /* ========================================================================= */
 /*                                 hdf5_out                                  */
@@ -29,12 +119,15 @@ hdf5_out::hdf5_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
     free_lines = NULL;
     num_unwritten_rows = 0;
     initial_non_empty_tiles = 0;
+    float_minvals = float_maxvals = 0;
 
     /* Retrieve and use variables related to the input JPX image */
 
+    // Parse hdf5 specific metadata within the JPX file.
+    parse_hdf5_metadata(dims, quiet);
+
     // Find max image components
     first_comp_idx = next_comp_idx;
-    std::cout << dims.get_num_components() << std::endl;
     num_components = dims.get_num_components() - first_comp_idx;
     if (num_components <= 0)
         { kdu_error e; e << "Output image files require more image components "
@@ -206,7 +299,7 @@ void
         return;
     }
 
-    image_line_buf *scan, *prev=NULL;
+    image_line_buf *scan=NULL, *prev=NULL;
     for (scan=incomplete_lines; scan != NULL; prev=scan, scan=scan->next) {
         assert(scan->next_x_tnum >= x_tnum);
         if (scan->next_x_tnum == x_tnum)
@@ -249,15 +342,21 @@ void
             { kdu_error e; e << "Unable to select hyperslab within HDF5 dataset."; }
         
         if (line.get_buf32() != NULL) {
+            // Finall we write the row to HDF5 file
             float* buf = (float*) malloc(sample_bytes * width);
-            kdu_sample32* tmp = line.get_buf32();
-            for (int n = 0 ; n < width; ++n)
-                buf[n] = tmp[n].fval;
             if (line.is_absolute()) {
-                 std::cout << "unimplemented" << std::endl;
+                bool lsbs = true;
+                convert_ints_to_TFLOAT(line.get_buf32(), buf, width,
+                        orig_precision[idx], float_minvals, float_maxvals);
+
+                if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
+                             H5P_DEFAULT, buf) < 0)
+                    { kdu_error e; e << "Unable to write to HDF5 file."; }
             }
             else {
-                // Finall we write the row to HDF5 file
+                convert_floats_to_TFLOAT(line.get_buf32(), buf, width,
+                        float_minvals, float_maxvals);
+
                 if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
                              H5P_DEFAULT, buf) < 0)
                     { kdu_error e; e << "Unable to write to HDF5 file."; }
@@ -291,3 +390,165 @@ void
         free_lines = scan;
     }
 }
+
+/*****************************************************************************/
+/*                     hdf5_out::parse_hdf5_parameters                        */
+/*****************************************************************************/
+
+bool hdf5_out::parse_hdf5_parameters(kdu_args &args) 
+{
+    const char* string;
+
+//    if (args.get_first() != NULL) {
+//        
+//        if (args.find("-minmax") != NULL)
+//        {
+//            for (int i = 0; i < 2; ++i) {
+//                const char *string = args.advance();
+//                bool succ = true;
+//                for (int j = 0; j < strlen(string); ++j) {
+//                    if (! (std::isdigit(string[j]) || 
+//                                string[j] == '.' || string[j] == '-'))
+//                        succ = false;
+//                }
+//                if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
+//                    succ = false;
+//                else if (!succ || (i == 1 && 
+//                            (sscanf(string, "%f", &float_maxvals) != 1)))
+//                    succ = false;
+//                
+//                if (!succ)
+//                     { kdu_error e; e << "\"-minmax\" argument contains "
+//                        "malformed specification. Expected to find two comma-"
+//                        "separated float numbers, enclosed by curly braces. "
+//                        "Example: -minmax {-1.0,1.0}"; }
+//            }
+//            args.advance();
+//        }
+//        else {
+//           kdu_warning w; w << "Using default float max/min values (%f, %f). "
+//           "Distortion is likely to occur, it is recommended to rather specify"
+//           " these values using the \"-minmax\" argument";
+//           float_minvals = H5_FLOAT_MIN;
+//           float_maxvals = H5_FLOAT_MAX;
+//        }
+//
+//        // Currently unused in this decoder because I can't identify the
+//        // number of components at any point within this decoder and
+//        // we represent components as planes
+//        if (args.find("-iplane") != NULL)
+//        {
+//            std::cout << "SIGH " << std::endl;
+//            const char *field_sep, *string = args.advance();
+//            for (field_sep=NULL; string != NULL; string=field_sep)
+//            {
+//                std::cout << string << std::endl;
+//                if (field_sep != NULL)
+//                {
+//                    if (*string != ',')
+//                    { kdu_error e; e << "\"-iplane\" argument requires a comma-"
+//                        "separated first and last plane parameters to read."; }
+//                    string++; // Walk past the separator
+//                }
+//                if (*string == '\0')
+//                    break;
+//                if (((field_sep = strchr(string,'}')) != NULL) &&
+//                    (*(++field_sep) == '\0'))
+//                    field_sep = NULL;
+//                
+//                if ((sscanf(string,"{%ld,%ld}", &h5_param.start_frame,
+//                            &h5_param.end_frame) != 2) || (h5_param.start_frame < 1) || 
+//                    (h5_param.end_frame < 1) || (h5_param.start_frame >= h5_param.end_frame))
+//                { kdu_error e; e << "\"-iplane\" argument contains malformed "
+//                    "plane specification.  Expected to find two comma-separated "
+//                    "integers, enclosed by curly braces.  They must be strictly "
+//                    "positive integers. The second parameter must be larger "
+//                    "than the first one"; }
+//            }
+//            args.advance();
+//        }        
+//
+//    return true;
+//    }
+}
+
+/*****************************************************************************/
+/*                     hdf5_out::parse_hdf5_metadata                         */
+/*****************************************************************************/
+
+void hdf5_out::parse_hdf5_metadata(kdu_image_dims &dims, bool quiet)
+{
+    // Current structure of metadata is one box, with a comma-seperated
+    // dictionary.
+    // minfloat
+    // maxfloat
+    // start_frame
+    // end_frame
+    // start_stoke
+    // end_stoke
+
+    jpx_meta_manager meta_manager = dims.get_meta_manager();
+    jp2_input_box h5_box;
+    if (meta_manager.exists()) {
+        kdu_byte uuid[16];
+        kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,
+                                0x70,0x09,0x11,0xE2,
+                                0xBC,0xFD,0x08,0x00,
+                                0x20,0x0C,0x9A,0x66};
+
+        jpx_metanode scn;
+        jpx_metanode mn = meta_manager.access_root();
+        int cnt;
+        jp2_family_src *jsrc;
+        for (cnt=0; (scn=mn.get_descendant(cnt)).exists(); ++cnt) {
+            if (scn.get_uuid(uuid) && (memcmp(uuid, h5_uuid, 16) == 0)) {
+                // Found h5 box
+                jp2_locator loc = scn.get_existing(jsrc);
+                h5_box.open(jsrc, loc);
+                h5_box.seek(16); // Seek over the UUID
+                break;
+            }
+        }
+
+        if (h5_box.exists()) {
+            kdu_uint32 contents_length = (kdu_uint32)
+                (h5_box.get_box_bytes() - 24);
+                // Header is always 24 bytes including length field
+            kdu_byte *h5_data_packet = new kdu_byte[contents_length];
+            h5_box.read(h5_data_packet, contents_length);
+            
+            // Do stuff with the retrieved metadata
+            std::string str;
+            for (int i = 0; i < contents_length; ++i)
+                str += h5_data_packet[i];
+
+            // parse data packet contents
+            std::vector<std::string> dictionary = str_split(str, ',');
+            for (int i = 0; i < dictionary.size(); ++i) {
+                std::vector<std::string> entry = str_split(dictionary[i], ':');
+                if (entry.size() == 2) {
+                    if (entry[0] == "minfloat") {
+                        float_minvals = atof(entry[1].c_str());
+                        std::cout << "Floating point minimum: " << 
+                                  float_minvals << " (chosen from "
+                                  "metadata)" << std::endl;
+                    }
+                    else if (entry[0] == "maxfloat") {
+                        float_maxvals = atof(entry[1].c_str());
+                        std::cout << "Floating point maximum: " << 
+                                     float_maxvals << " (chosen from "
+                                     "metadata)" << std::endl;
+                    }
+                    // Much of the metadata may never be used in encoding
+                    // or decoding, but helps just to describe context 
+                    // specific information on where images may have come
+                    // from.
+                }
+            }
+
+            delete[] h5_data_packet;
+        }
+
+        h5_box.close();
+    }
+} 

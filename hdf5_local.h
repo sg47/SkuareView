@@ -13,6 +13,14 @@
 
 // Specific to ICRAR's hdf5 image format.
 #define DATASET_NAME "full_cube"
+//#define H5_FLOAT_MIN -.006383
+//#define H5_FLOAT_MAX 0.105909
+//#define H5_FLOAT_MIN -0.000354053
+//#define H5_FLOAT_MAX 0.00106955
+//frame 407 - 500x500 min max
+
+#define H5_FLOAT_MIN -0.000611
+#define H5_FLOAT_MAX 0.000553
 
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
 #include "kdu_elementary.h"
@@ -97,7 +105,7 @@ private: // Members describing the organization of the FITS data
     image_line_buf *free_lines;
     //--------------------------------------------------------------------------
 private: // Members which are affected by (or support) cropping
-    bool parse_hdf5_parameters(kdu_args &args);
+    bool parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims);
 };
 
 /*****************************************************************************/
@@ -131,6 +139,7 @@ class hdf5_out : public kdu_image_out_base {
     int first_comp_idx;
     int num_components;
     int precision;
+    float float_minvals, float_maxvals;
     bool forced_align_lsbs;
     int *orig_precision; // All equal to above unless `precision' is forced.
     bool *is_signed; // One entry for each component
@@ -142,4 +151,8 @@ class hdf5_out : public kdu_image_out_base {
     int num_unwritten_rows;
     kdu_simple_file_target out;
     int initial_non_empty_tiles; // tnum >= this implies empty; 0 until we know
+    //--------------------------------------------------------------------------
+private: // Members which are affected by (or support) cropping
+    bool parse_hdf5_parameters(kdu_args &args);
+    void parse_hdf5_metadata(kdu_image_dims &dims, bool quiet);
 };

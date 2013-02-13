@@ -5,7 +5,9 @@
 //
 //  @author Slava Kitaeff
 //  @date 29/07/12.
-//  @brief TODO
+//  @brief Implements file reading from the FITS file format, provides support
+//         up to 4 dimensions and is readily extendible to include further
+//         features.
 //  Copyright (c) 2012 University of Western Australia. All rights reserved.
 //
 /******************************************************************************/
