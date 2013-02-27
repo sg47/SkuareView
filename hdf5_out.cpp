@@ -4,16 +4,61 @@
 //  Project: SkuareView-NGAS-plugin
 //
 //  @author Sean Peters
-//  @date 01/02/2013
-//  @brief Implements file writing from the HDF5 file format specified by 
-//         ICRAR. Readily extendible to include further features.
+//  @date 18/02/2013
+//  @brief Implements decoding from JPEG2000 to the HDF5 file format specified 
+//         by ICRAR. Readily extendible to include further features.
 // 
 //  Copyright (c) 2012 University of Western Australia. All rights reserved.
 //
+// This code is based on original 
+// File: image_in.cpp [scope = APPS/IMAGE-IO]
+// Version: Kakadu, V7.0
+// Author: David Taubman
+// Last Revised: 19 Jan, 2012
+/*****************************************************************************/
+// Copyright 2001, David Taubman, The University of New South Wales (UNSW)
+// The copyright owner is Unisearch Ltd, Australia (commercial arm of UNSW)
+// Neither this copyright statement, nor the licensing details below
+// may be removed from this file or dissociated from its contents.
+/*****************************************************************************/
+// Licensee: International Centre For Radio Astronomy Research, Uni of WA
+// License number: 01265
+// The licensee has been granted a UNIVERSITY LIBRARY license to the
+// contents of this source file.  A brief summary of this license appears
+// below.  This summary is not to be relied upon in preference to the full
+// text of the license agreement, accepted at purchase of the license.
+// 1. The License is for University libraries which already own a copy of
+//    the book, "JPEG2000: Image compression fundamentals, standards and
+//    practice," (Taubman and Marcellin) published by Kluwer Academic
+//    Publishers.
+// 2. The Licensee has the right to distribute copies of the Kakadu software
+//    to currently enrolled students and employed staff members of the
+//    University, subject to their agreement not to further distribute the
+//    software or make it available to unlicensed parties.
+// 3. Subject to Clause 2, the enrolled students and employed staff members
+//    of the University have the right to install and use the Kakadu software
+//    and to develop Applications for their own use, in their capacity as
+//    students or staff members of the University.  This right continues
+//    only for the duration of enrollment or employment of the students or
+//    staff members, as appropriate.
+// 4. The enrolled students and employed staff members of the University have the
+//    right to Deploy Applications built using the Kakadu software, provided
+//    that such Deployment does not result in any direct or indirect financial
+//    return to the students and staff members, the Licensee or any other
+//    Third Party which further supplies or otherwise uses such Applications.
+// 5. The Licensee, its students and staff members have the right to distribute
+//    Reusable Code (including source code and dynamically or statically linked
+//    libraries) to a Third Party, provided the Third Party possesses a license
+//    to use the Kakadu software, and provided such distribution does not
+//    result in any direct or indirect financial return to the Licensee,
+//    students or staff members.  This right continues only for the
+//    duration of enrollment or employment of the students or staff members,
+//    as appropriate.
 /******************************************************************************/
 
 // System includes
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <sstream>
@@ -29,29 +74,59 @@
 #include "hdf5_local.h"
 
 /*****************************************************************************/
-/* STATIC                  convert_floats_to_TFLOAT                          */
+/* STATIC                   convert_floats_to_TFLOAT                         */
 /*****************************************************************************/
 
 static void
 convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num, 
-                         double minval, double maxval)
+                         double minval, double maxval, short domain, 
+                         std::ofstream& before, std::ofstream& after)
 {
-    float scale = fabs(maxval-minval);
-    float offset = minval;   
+    float scale, factor, offset=0.0;
+
+    if (domain == 0) { // invert the log transform
+        factor = 500;
+        scale = log((maxval - minval) * factor + 1);
+    }
+    else if (domain == 1) { // invert the sqrt transform
+        scale = sqrt(fabs(maxval-minval));
+    }
+    else { // invert the linear transform
+
+    }
+    offset = minval;   
 
     for (int i = 0; i < num; i++)
     {
-        //std::cout << "JPX SOURCE: " << src[i].fval << std::endl;
-        double fval = (double)((src[i].fval + 0.5) * scale + offset);
-        //std::cout << "HDF5 SINK: " << fval << std::endl;
+        float fval = (double)((src[i].fval + 0.5) * scale);
+        if (domain == 0) {
+            fval = (exp(fval) - 1) / factor + offset;
+        }
+        else if (domain == 1) {
+            fval = fval * fval + offset; 
+        }
+        else {
+            fval += offset;    
+        }
+
         fval = (fval > minval)?fval:minval;
         fval = (fval < maxval)?fval:maxval;
         dest[i]= fval;
+
+        if (before != NULL) {
+            before << src[i].fval << " ";
+            after << dest[i] << " ";
+        }
+    }
+
+    if (before != NULL) {
+        before << std::endl;
+        after << std::endl;
     }
 }
 
 /*****************************************************************************/
-/* STATIC                  convert_ints_to_TFLOAT                          */
+/* STATIC                    convert_ints_to_TFLOAT                          */
 /*****************************************************************************/
 
 static void
@@ -67,12 +142,7 @@ convert_ints_to_TFLOAT(kdu_sample32 *src, float *dest, int num,
 
     for (int i = 0; i < num; i++)
     {
-        std::cout << "JPX SOURCE: " << src[i].fval << std::endl;
-        std::cout << "offset_jpx: " << offset_jpx << std::endl;
-        std::cout << "scale: " << scale << std::endl;
-        std::cout << "offset_h5: " << offset_h5 << std::endl;
-        double fval = (double)((src[i].ival + offset_jpx) * scale + offset_h5);
-        std::cout << "HDF5 SINK: " << fval << std::endl;
+        double fval = (double)((src[i].ival - offset_jpx) / scale + offset_h5);
         fval = (fval > minval)?fval:minval;
         fval = (fval < maxval)?fval:maxval;
         dest[i]= fval;
@@ -109,7 +179,7 @@ str_split(const std::string &s, char delim)
 /*                             hdf5_out::hdf5_out                            */
 /*****************************************************************************/
 
-hdf5_out::hdf5_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
+hdf5_out::hdf5_out(const char *fname, kdu_args& args, kdu_image_dims &dims, int &next_comp_idx,
                    bool quiet)
 {
     // Iinitialize state information in case we have to clean up prematurely
@@ -119,7 +189,10 @@ hdf5_out::hdf5_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
     free_lines = NULL;
     num_unwritten_rows = 0;
     initial_non_empty_tiles = 0;
-    float_minvals = float_maxvals = 0;
+    float_minvals = float_maxvals = 0; //TODO better way of doing this metadata
+
+    if (!parse_hdf5_parameters(args, dims)) 
+        { kdu_error e; e << "Unable to parse HDF5 parameters"; }
 
     /* Retrieve and use variables related to the input JPX image */
 
@@ -284,7 +357,7 @@ hdf5_out::~hdf5_out()
 /*****************************************************************************/
 
 void
-    hdf5_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
+hdf5_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
 {
     int width = line.get_width();
     int idx = comp_idx - this->first_comp_idx;
@@ -345,7 +418,6 @@ void
             // Finall we write the row to HDF5 file
             float* buf = (float*) malloc(sample_bytes * width);
             if (line.is_absolute()) {
-                bool lsbs = true;
                 convert_ints_to_TFLOAT(line.get_buf32(), buf, width,
                         orig_precision[idx], float_minvals, float_maxvals);
 
@@ -355,7 +427,8 @@ void
             }
             else {
                 convert_floats_to_TFLOAT(line.get_buf32(), buf, width,
-                        float_minvals, float_maxvals);
+                        float_minvals, float_maxvals, domain, raw_before,
+                        raw_after);
 
                 if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
                              H5P_DEFAULT, buf) < 0)
@@ -395,88 +468,84 @@ void
 /*                     hdf5_out::parse_hdf5_parameters                        */
 /*****************************************************************************/
 
-bool hdf5_out::parse_hdf5_parameters(kdu_args &args) 
+bool 
+hdf5_out::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims) 
 {
     const char* string;
 
-//    if (args.get_first() != NULL) {
-//        
-//        if (args.find("-minmax") != NULL)
-//        {
-//            for (int i = 0; i < 2; ++i) {
-//                const char *string = args.advance();
-//                bool succ = true;
-//                for (int j = 0; j < strlen(string); ++j) {
-//                    if (! (std::isdigit(string[j]) || 
-//                                string[j] == '.' || string[j] == '-'))
-//                        succ = false;
-//                }
-//                if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
-//                    succ = false;
-//                else if (!succ || (i == 1 && 
-//                            (sscanf(string, "%f", &float_maxvals) != 1)))
-//                    succ = false;
-//                
-//                if (!succ)
-//                     { kdu_error e; e << "\"-minmax\" argument contains "
-//                        "malformed specification. Expected to find two comma-"
-//                        "separated float numbers, enclosed by curly braces. "
-//                        "Example: -minmax {-1.0,1.0}"; }
-//            }
-//            args.advance();
-//        }
-//        else {
-//           kdu_warning w; w << "Using default float max/min values (%f, %f). "
-//           "Distortion is likely to occur, it is recommended to rather specify"
-//           " these values using the \"-minmax\" argument";
-//           float_minvals = H5_FLOAT_MIN;
-//           float_maxvals = H5_FLOAT_MAX;
-//        }
-//
-//        // Currently unused in this decoder because I can't identify the
-//        // number of components at any point within this decoder and
-//        // we represent components as planes
-//        if (args.find("-iplane") != NULL)
-//        {
-//            std::cout << "SIGH " << std::endl;
-//            const char *field_sep, *string = args.advance();
-//            for (field_sep=NULL; string != NULL; string=field_sep)
-//            {
-//                std::cout << string << std::endl;
-//                if (field_sep != NULL)
-//                {
-//                    if (*string != ',')
-//                    { kdu_error e; e << "\"-iplane\" argument requires a comma-"
-//                        "separated first and last plane parameters to read."; }
-//                    string++; // Walk past the separator
-//                }
-//                if (*string == '\0')
-//                    break;
-//                if (((field_sep = strchr(string,'}')) != NULL) &&
-//                    (*(++field_sep) == '\0'))
-//                    field_sep = NULL;
-//                
-//                if ((sscanf(string,"{%ld,%ld}", &h5_param.start_frame,
-//                            &h5_param.end_frame) != 2) || (h5_param.start_frame < 1) || 
-//                    (h5_param.end_frame < 1) || (h5_param.start_frame >= h5_param.end_frame))
-//                { kdu_error e; e << "\"-iplane\" argument contains malformed "
-//                    "plane specification.  Expected to find two comma-separated "
-//                    "integers, enclosed by curly braces.  They must be strictly "
-//                    "positive integers. The second parameter must be larger "
-//                    "than the first one"; }
-//            }
-//            args.advance();
-//        }        
-//
-//    return true;
-//    }
+    if (args.get_first() != NULL) {
+        /* Ouput the values decoded before and after renormalization to a raw
+         * data file for testing analysis*/
+        if (args.find("-rawtest") != NULL)
+        {
+            /* raw data values before they are normalized for the JPX image. These
+             * can be compared against decoder_after_raw, to see how the precision
+             * of the values compared after they have been renormalized back to
+             * they're origional values. */
+            raw_before.open("decoder_before_rawtest");
+
+            /* raw data values after they are normalized for the JPX image. These
+             * can be compared against the decoder_before_raw, to see how the 
+             * precision of the values is affected by the internal Kakadu compressor
+             * exclusively. */
+            raw_after.open("decoder_after_rawtest");
+            args.advance();
+        }
+        
+        if (args.find("-domain") != NULL)
+        {
+            const char *string = args.advance();
+            if (strcmp(string, "log") == 0)
+                domain=0;
+            else if (strcmp(string, "sqrt") == 0)
+                domain=1;
+            else
+                domain=2; // linear
+            args.advance();
+        }
+        
+        if (args.find("-minmax") != NULL)
+        {
+            for (int i = 0; i < 2; ++i) {
+                const char *string = args.advance();
+                bool succ = true;
+                for (int j = 0; j < strlen(string); ++j) {
+                    if (! (std::isdigit(string[j]) || 
+                                string[j] == '.' || string[j] == '-'))
+                        succ = false;
+                }
+                if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
+                    succ = false;
+                else if (!succ || (i == 1 && 
+                            (sscanf(string, "%f", &float_maxvals) != 1)))
+                    succ = false;
+                
+                if (!succ)
+                     { kdu_error e; e << "\"-minmax\" argument contains "
+                        "malformed specification. Expected to find two comma-"
+                        "separated float numbers, enclosed by curly braces. "
+                        "Example: -minmax {-1.0,1.0}"; }
+            }
+            args.advance();
+        }
+        else {
+           kdu_warning w; w << "Using default float max/min values (%f, %f). "
+           "Distortion is likely to occur, it is recommended to rather specify"
+           " these values using the \"-minmax\" argument";
+           float_minvals = H5_FLOAT_MIN;
+           float_maxvals = H5_FLOAT_MAX;
+        }
+
+    return true;
+    }
 }
 
 /*****************************************************************************/
 /*                     hdf5_out::parse_hdf5_metadata                         */
 /*****************************************************************************/
 
-void hdf5_out::parse_hdf5_metadata(kdu_image_dims &dims, bool quiet)
+void 
+hdf5_out::parse_hdf5_metadata(kdu_image_dims &dims, bool quiet)
 {
     // Current structure of metadata is one box, with a comma-seperated
     // dictionary.
@@ -527,13 +596,13 @@ void hdf5_out::parse_hdf5_metadata(kdu_image_dims &dims, bool quiet)
             for (int i = 0; i < dictionary.size(); ++i) {
                 std::vector<std::string> entry = str_split(dictionary[i], ':');
                 if (entry.size() == 2) {
-                    if (entry[0] == "minfloat") {
+                    if (float_minvals == 0 && entry[0] == "minfloat") {
                         float_minvals = atof(entry[1].c_str());
                         std::cout << "Floating point minimum: " << 
                                   float_minvals << " (chosen from "
                                   "metadata)" << std::endl;
                     }
-                    else if (entry[0] == "maxfloat") {
+                    else if (float_maxvals == 0 && entry[0] == "maxfloat") {
                         float_maxvals = atof(entry[1].c_str());
                         std::cout << "Floating point maximum: " << 
                                      float_maxvals << " (chosen from "

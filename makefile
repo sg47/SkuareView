@@ -7,7 +7,7 @@
 ENC=skuareview-encode
 DEC=skuareview-decode
 
-COMPILER=g++ -g
+COMPILER=g++ -g #-pg
 
 E_OBJS=image_in.o fits_in.o hdf5_in.o roi_sources.o palette.o
 D_OBJS=image_out.o hdf5_out.o palette.o
@@ -33,7 +33,7 @@ $(ENC): $(COMPRESS)/kdu_compress.cpp $(E_OBJS)
 	$(COMPILER) $(COMPRESS)/kdu_compress.cpp -o $(ENC) $(E_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
 $(DEC): $(EXPAND)/kdu_expand.cpp $(D_OBJS)
-	$(COMPILER) $(EXPAND)/kdu_expand.cpp -o $(DEC) $(D_OBJS) $(LIBS) -DKSA_IMG_FORMATS=1
+	$(COMPILER) $(EXPAND)/kdu_expand.cpp -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
 image_in.o: $(IMAGE)/image_in.cpp 
 	$(COMPILER) -c $(IMAGE)/image_in.cpp $(LIBS) -DSKA_IMG_FORMATS=1 -DKDU_INCLUDE_TIFF=1

@@ -3,30 +3,67 @@
 //  @file: hdf5_local.h
 //  Project: Skuareview-NGAS-plugin
 //
-//  @author Slava Kitaeff
-//  @date 29/07/12.
+//  @author Sean Peters
+//  @date 18/02/2013
 //  @brief The The file contains the definitions of types and classes
 //  @brief for the HDF5 image format.
+//
 //  Copyright (c) 2012 University of Western Australia. All rights reserved.
 //
 /*****************************************************************************/
+// Copyright 2001, David Taubman, The University of New South Wales (UNSW)
+// The copyright owner is Unisearch Ltd, Australia (commercial arm of UNSW)
+// Neither this copyright statement, nor the licensing details below
+// may be removed from this file or dissociated from its contents.
+/*****************************************************************************/
+// Licensee: International Centre For Radio Astronomy Research, Uni of WA
+// License number: 01265
+// The licensee has been granted a UNIVERSITY LIBRARY license to the
+// contents of this source file.  A brief summary of this license appears
+// below.  This summary is not to be relied upon in preference to the full
+// text of the license agreement, accepted at purchase of the license.
+// 1. The License is for University libraries which already own a copy of
+//    the book, "JPEG2000: Image compression fundamentals, standards and
+//    practice," (Taubman and Marcellin) published by Kluwer Academic
+//    Publishers.
+// 2. The Licensee has the right to distribute copies of the Kakadu software
+//    to currently enrolled students and employed staff members of the
+//    University, subject to their agreement not to further distribute the
+//    software or make it available to unlicensed parties.
+// 3. Subject to Clause 2, the enrolled students and employed staff members
+//    of the University have the right to install and use the Kakadu software
+//    and to develop Applications for their own use, in their capacity as
+//    students or staff members of the University.  This right continues
+//    only for the duration of enrollment or employment of the students or
+//    staff members, as appropriate.
+// 4. The enrolled students and employed staff members of the University have the
+//    right to Deploy Applications built using the Kakadu software, provided
+//    that such Deployment does not result in any direct or indirect financial
+//    return to the students and staff members, the Licensee or any other
+//    Third Party which further supplies or otherwise uses such Applications.
+// 5. The Licensee, its students and staff members have the right to distribute
+//    Reusable Code (including source code and dynamically or statically linked
+//    libraries) to a Third Party, provided the Third Party possesses a license
+//    to use the Kakadu software, and provided such distribution does not
+//    result in any direct or indirect financial return to the Licensee,
+//    students or staff members.  This right continues only for the
+//    duration of enrollment or employment of the students or staff members,
+//    as appropriate.
+/******************************************************************************/
 
 // Specific to ICRAR's hdf5 image format.
 #define DATASET_NAME "full_cube"
-//#define H5_FLOAT_MIN -.006383
-//#define H5_FLOAT_MAX 0.105909
+#define H5_FLOAT_MIN -.006383
+#define H5_FLOAT_MAX 0.105909
 //#define H5_FLOAT_MIN -0.000354053
 //#define H5_FLOAT_MAX 0.00106955
-//frame 407 - 500x500 min max
-
-#define H5_FLOAT_MIN -0.000611
-#define H5_FLOAT_MAX 0.000553
 
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
 #include "kdu_elementary.h"
 #include "kdu_image.h"
 #include "kdu_file_io.h"
 #include "hdf5.h"
+#include <fstream>
 
 typedef struct {
     long start_frame;// First frame of data cube to read.  Ignored for 2D images.  
@@ -88,11 +125,15 @@ private: // Members describing the organization of the FITS data
 
     hdf5_cube_info cinfo;
         
-    double float_minvals; // When HDF5 file contains floating-point samples
-    double float_maxvals; // When HDF5 file contains floating-point samples
+    float float_minvals; // When HDF5 file contains floating-point samples
+    float float_maxvals; // When HDF5 file contains floating-point samples
+    short domain;
     //kdu_uint16 bitspersample;
     kdu_simple_file_source src;
    
+    std::ofstream raw_before, raw_after; // Output the values of decoded before
+                                         // and after renormalization to a raw
+                                         // data file for testing analysis
     bool is_signed; // Whether the data is signed or not
     bool littlendian; // true if data order is littlendian
     int first_comp_idx;
@@ -114,11 +155,12 @@ private: // Members which are affected by (or support) cropping
 
 class hdf5_out : public kdu_image_out_base {
   public: // Member functions
-    hdf5_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
-            bool quiet);
+    hdf5_out(const char *fname, kdu_args& args, kdu_image_dims& dims,
+            int& next_comp_idx, bool quiet);
     ~hdf5_out();
     void put(int comp_idx, kdu_line_buf &line, int x_tnum);
   private: // Data
+    hdf5_param h5_param;;
     hdf5_cube_info cinfo; // Contains the essential structural information for
                           // an HDF5 image cube
     hid_t file; // File handle for the HDF5 file
@@ -140,9 +182,13 @@ class hdf5_out : public kdu_image_out_base {
     int num_components;
     int precision;
     float float_minvals, float_maxvals;
+    short domain;
     bool forced_align_lsbs;
     int *orig_precision; // All equal to above unless `precision' is forced.
     bool *is_signed; // One entry for each component
+    std::ofstream raw_before, raw_after; // Output the values of decoded before
+                                         // and after renormalization to a raw
+                                         // data file for testing analysis
     int scanline_width, unpacked_samples;
     int sample_bytes, pixel_bytes, row_bytes;
     bool pre_pack_littlendian; // Scanline byte order prior to packing
@@ -153,6 +199,6 @@ class hdf5_out : public kdu_image_out_base {
     int initial_non_empty_tiles; // tnum >= this implies empty; 0 until we know
     //--------------------------------------------------------------------------
 private: // Members which are affected by (or support) cropping
-    bool parse_hdf5_parameters(kdu_args &args);
+    bool parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims);
     void parse_hdf5_metadata(kdu_image_dims &dims, bool quiet);
 };

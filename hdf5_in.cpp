@@ -1,10 +1,13 @@
 /*****************************************************************************/
+//
 //  @file: hdf5_in.cpp
 //  Project: SkuareView-NGAS-plugin
 //
 //  @author Sean Peters
-//  @date 25/01/2013
-//  @brief TODO
+//  @date 18/02/2013
+//  @brief Implements encoding from HDF5 file format specified by ICRAR to 
+//         JPEG2000. Readily extendible to include further features.
+//
 //  Copyright (c) 2012 University of Western Australia. All rights reserved.
 //
 // This code is based on original 
@@ -51,15 +54,11 @@
 //    students or staff members.  This right continues only for the
 //    duration of enrollment or employment of the students or staff members,
 //    as appropriate.
-/******************************************************************************
-Description:
-   Implements image file reading for a variety of different file formats:
-currently BMP, PGM, PPM, TIFF and RAW only.  Readily extendible to include
-other file formats without affecting the rest of the system.
-******************************************************************************/
+/******************************************************************************/
 
 // System includes
 #include <iostream>
+#include <fstream>
 #include <string.h>
 #include <time.h>
 #include <math.h>
@@ -83,22 +82,57 @@ other file formats without affecting the rest of the system.
 
 static void
 convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num, 
-                         bool is_signed, double minval, double maxval)
+                         bool is_signed, double minval, double maxval, 
+                         short domain, std::ofstream& before, 
+                         std::ofstream& after)
 {
     // Floats are always signed but I left this in anyway
-    float scale, offset=0.0;
+    float factor, scale, offset=0.0;
     float limmin=-0.75, limmax=0.75;
-    scale = 1.0 / fabs(maxval - minval);
     offset = -0.5;
+
+    /* The images captured in radio astronomy have extremely dynamic range of
+     * values. As such a linear scaling will often result an over compressed 
+     * image, because most of the data will end up being extremely close 
+     * together between -0,5 and 0.5. As such we use a log or sqrt domain to
+     * minimize the loss in precision */
+    if (domain == 0) { // log domain 
+        factor = 500;
+        scale = 1 / log(fabs(maxval - minval) * factor + 1);
+    }
+    else if (domain == 1) { // sqrt domain
+        scale = 1.0 / sqrt(fabs(maxval - minval));
+    }
+    else { // linear domain
+        scale = 1.0 / fabs(maxval-minval);
+    }
 
     for (int i = 0; i< num; i++)
     {
-        //std::cout << "HDF5 SOURCE: " << src[i] << std::endl;
-        float fval = (float)((src[i] - minval) * scale + offset);
-        //std::cout << "JPX SINK: " << fval << std::endl;
+        float fval;
+        if (domain == 0) { // log domain 
+            fval = log((src[i] - minval) * factor + 1) * scale + offset;
+        }
+        else if (domain == 1) { // sqrt domain
+            fval = (float)(sqrt(src[i] - minval) * scale + offset);
+        }
+        else { // linear domain
+            fval = src[i] * scale + offset;
+        }
+
         fval = (fval > limmin)?fval:limmin;
         fval = (fval < limmax)?fval:limmax;
         dest[i].fval = fval;
+
+        if (before.is_open() && after.is_open()) {
+            before << src[i] << " ";
+            after << dest[i].fval << " ";
+        }
+    }
+
+    if (before.is_open() && after.is_open()) {
+        before << std::endl;
+        after << std::endl;
     }
 }
 
@@ -112,7 +146,7 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
 {
     double scale, offset=0.0;
     double limmin=-0.75, limmax=0.75;
-
+   
     scale = 1.0 / fabs(maxval - minval);
     offset = -0.5;
 
@@ -182,8 +216,7 @@ hdf5_in::hdf5_in(const char *fname,
     cinfo.t_class = H5Tget_class(datatype);
     if (cinfo.t_class == H5T_NO_CLASS) 
         { kdu_error e; e << "Unable to get class type of dataset in HDF5 file."; }
-    
-    // TODO: should use a bool rather than the HDF5 datatype
+
     // Get the data order (i.e littlendian or bigendian)
     order = H5Tget_order(datatype); 
     if (order == H5T_ORDER_LE)
@@ -219,10 +252,10 @@ hdf5_in::hdf5_in(const char *fname,
         { kdu_error e; e << "Unable to get precision of dataset in HDF5 file."; }
     else if (precision != 8 * sample_bytes)
         { kdu_error e; e << "Padding in sample bytes. Handling for this is "
-                            "unimplemented"; } // TODO
+                            "unimplemented"; } 
 
-    // TODO: implement forced precision
-    bool align_lsbs = false;
+    // Check for forced precision
+    bool align_lsbs = false; // TODO: true or false?
     int forced_prec = dims.get_forced_precision(next_comp_idx, align_lsbs);
     if (forced_prec > 0)
         precision = forced_prec;
@@ -491,8 +524,8 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
         hsize_t temp = offset_out[0];
         offset_out[0] = offset_out[2];
         offset_out[2] = temp;
-        if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, dims_mem, 
-                    NULL) < 0)
+        if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, 
+                    dims_mem, NULL) < 0)
             { kdu_error e; e << "Unable to select cropped hyperslab of dataset in"
                                 "HDF5 file."; }
         temp = offset_out[0];
@@ -511,10 +544,12 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
 
                 if (line.is_absolute())
                     convert_TFLOAT_to_ints(buffer, line.get_buf32(), width,
-                            precision, true, float_minvals, float_maxvals, sample_bytes);
+                            precision, true, float_minvals, float_maxvals, 
+                            sample_bytes);
                 else
                     convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
-                        is_signed, float_minvals, float_maxvals);
+                        is_signed, float_minvals, float_maxvals, domain, 
+                        raw_before, raw_after);
 
                 // TODO: HDF5 has no way of determining the min or max float value
                 // this is important for normalizing the floats for Kadaku. The
@@ -581,7 +616,36 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
 bool hdf5_in::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
 {
     if (args.get_first() != NULL) {
-        
+        /* Ouput the values encoded before and after renormalization to a raw
+         * data file for testing analysis*/
+        if (args.find("-rawtest") != NULL)
+        {
+            /* raw data values before they are normalized for the JPX image. These
+             * can be compared against decoder_after_raw, to see how the precision
+             * of the values compared after they have been renormalized back to
+             * they're origional values. */
+            raw_before.open("encoder_before_rawtest");
+
+            /* raw data values after they are normalized for the JPX image. These
+             * can be compared against the decoder_before_raw, to see how the 
+             * precision of the values is affected by the internal Kakadu compressor
+             * exclusively. */
+            raw_after.open("encoder_after_rawtest");
+            args.advance();
+        }
+
+        if (args.find("-domain") != NULL)
+        {
+            const char *string = args.advance();
+            
+            if (strcmp("log",string) == 0)
+                domain=0;
+            else if (strcmp("sqrt",string) == 0)
+                domain=1;
+            else
+                domain=2; // linear
+            args.advance();
+        }
         if (args.find("-minmax") != NULL)
         {
             for (int i = 0; i < 2; ++i) {
