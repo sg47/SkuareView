@@ -1,6 +1,10 @@
 # @author Sean Peters
 # @brief Makefile for SkuareView-NGAS-plugin
-# TODO: Compilation instructions
+# Compilation Instruction:
+# To compile, you will need to specify a path to the apps provided by the kakadu library.
+# The Libraries required are listed under "# Libraries"
+# If you are working with a newly compiled version of kakadu. Some edits will be required,
+# these are specified within the README.
 # Had to edit kdu_compress.cpp image_in.cpp kdu_image.h (in apps and all includes),
 # changes are tagged with SkuareView-plugin
 

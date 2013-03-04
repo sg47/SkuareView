@@ -1,7 +1,9 @@
 /*
  * @author Sean Peters
  * @date 04/02/13
- * @brief Short program to determine the min and max floats in a HDF5 float cube
+ * @brief Short program to determine the min and max floats in a ICRAR defined HDF5 float cube
+ * The min and max are required to normalize the data when encoding to JPEG2000. The normalization process
+ * is well documented in the source of the encoder.
  */
 
 #include "stdlib.h"
