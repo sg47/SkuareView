@@ -1,6 +1,6 @@
 /*****************************************************************************/
 //
-//  @file: hdf5_in.cpp
+//  @file: hdf5_out.cpp
 //  Project: SkuareView-NGAS-plugin
 //
 //  @author Sean Peters
@@ -83,7 +83,14 @@ convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num,
                          std::ofstream& before, std::ofstream& after)
 {
     float scale, factor, offset=0.0;
+    if (src == NULL)
+        {kdu_error e; e << "16 bit irreversible compression is unimplemented";}
 
+    /* The images captured in radio astronomy have extremely dynamic range of
+     * values. As such a linear scaling will often result an over compressed 
+     * image, because most of the data will end up being extremely close 
+     * together. As such we use a log or sqrt domain to minimize the loss in 
+     * precision */
     if (domain == 0) { // invert the log transform
         factor = 500;
         scale = log((maxval - minval) * factor + 1);
@@ -130,8 +137,9 @@ convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num,
 /*****************************************************************************/
 
 static void
-convert_ints_to_TFLOAT(kdu_sample32 *src, float *dest, int num, 
-                         int precision, double minval, double maxval)
+convert_ints_to_TFLOAT(kdu_line_buf &line, float *dest, int num, 
+                         int precision, double minval, double maxval,
+                         std::ofstream& before, std::ofstream& after)
 {
     double scale = 1.0 / fabs(maxval - minval);
     double offset_jpx = -0.5;
@@ -140,12 +148,38 @@ convert_ints_to_TFLOAT(kdu_sample32 *src, float *dest, int num,
     scale *= (double)((1<<precision)-1);
     offset_jpx *= (double)(1<<precision);
 
-    for (int i = 0; i < num; i++)
-    {
-        double fval = (double)((src[i].ival - offset_jpx) / scale + offset_h5);
-        fval = (fval > minval)?fval:minval;
-        fval = (fval < maxval)?fval:maxval;
-        dest[i]= fval;
+    if (line.get_buf16() != NULL) {
+        kdu_sample16 *src = line.get_buf16();
+        for (int i = 0; i < num; i++)
+        {
+            double fval = (double)((src[i].ival - offset_jpx) / scale + offset_h5);
+            fval = (fval > minval)?fval:minval;
+            fval = (fval < maxval)?fval:maxval;
+            dest[i] = fval;
+            if (before != NULL) {
+                before << src[i].ival << " ";
+                after << dest[i] << " ";
+            }
+        }
+    }
+    else if (line.get_buf32() != NULL) {
+        kdu_sample32 *src = line.get_buf32();
+        for (int i = 0; i < num; i++)
+        {
+            double fval = (double)((src[i].ival - offset_jpx) / scale + offset_h5);
+            fval = (fval > minval)?fval:minval;
+            fval = (fval < maxval)?fval:maxval;
+            dest[i]= fval;
+            if (before != NULL) {
+                before << src[i].ival << " ";
+                after << dest[i] << " ";
+            }
+        }
+    }
+
+    if (before != NULL) {
+        before << std::endl;
+        after << std::endl;
     }
 }
 
@@ -189,7 +223,8 @@ hdf5_out::hdf5_out(const char *fname, kdu_args& args, kdu_image_dims &dims, int 
     free_lines = NULL;
     num_unwritten_rows = 0;
     initial_non_empty_tiles = 0;
-    float_minvals = float_maxvals = 0; //TODO better way of doing this metadata
+    float_minvals = float_maxvals = -11024; //Used as a value that flags, nothing in metadata
+    domain=2; // Linear by default
 
     if (!parse_hdf5_parameters(args, dims)) 
         { kdu_error e; e << "Unable to parse HDF5 parameters"; }
@@ -414,31 +449,28 @@ hdf5_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
                 dims_mem, NULL) < 0)
             { kdu_error e; e << "Unable to select hyperslab within HDF5 dataset."; }
         
-        if (line.get_buf32() != NULL) {
-            // Finall we write the row to HDF5 file
-            float* buf = (float*) malloc(sample_bytes * width);
-            if (line.is_absolute()) {
-                convert_ints_to_TFLOAT(line.get_buf32(), buf, width,
-                        orig_precision[idx], float_minvals, float_maxvals);
+        // Finall we write the row to HDF5 file
+        float* buf = (float*) malloc(4 * width); //TODO: With other formats this
+            // buffer size will change.
+        if (line.is_absolute()) {
+            convert_ints_to_TFLOAT(line, buf, width,
+                    orig_precision[idx], float_minvals, float_maxvals,
+                    raw_before, raw_after);
 
-                if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
-                             H5P_DEFAULT, buf) < 0)
-                    { kdu_error e; e << "Unable to write to HDF5 file."; }
-            }
-            else {
-                convert_floats_to_TFLOAT(line.get_buf32(), buf, width,
-                        float_minvals, float_maxvals, domain, raw_before,
-                        raw_after);
-
-                if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
-                             H5P_DEFAULT, buf) < 0)
-                    { kdu_error e; e << "Unable to write to HDF5 file."; }
-            }
-            free(buf);
+            if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
+                         H5P_DEFAULT, buf) < 0)
+                { kdu_error e; e << "Unable to write to HDF5 file."; }
         }
         else {
-            std::cout << "unimplemented" << std::endl;
+            convert_floats_to_TFLOAT(line.get_buf32(), buf, width,
+                    float_minvals, float_maxvals, domain, raw_before,
+                    raw_after);
+
+            if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
+                         H5P_DEFAULT, buf) < 0)
+                { kdu_error e; e << "Unable to write to HDF5 file."; }
         }
+        free(buf);
 
         // Adjust our offset in the image after writing the row
         // TODO: currently specifiying a cropping on the image is unimplemented.
@@ -536,8 +568,8 @@ hdf5_out::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
            float_maxvals = H5_FLOAT_MAX;
         }
 
-    return true;
     }
+    return true;
 }
 
 /*****************************************************************************/
@@ -596,13 +628,13 @@ hdf5_out::parse_hdf5_metadata(kdu_image_dims &dims, bool quiet)
             for (int i = 0; i < dictionary.size(); ++i) {
                 std::vector<std::string> entry = str_split(dictionary[i], ':');
                 if (entry.size() == 2) {
-                    if (float_minvals == 0 && entry[0] == "minfloat") {
+                    if (float_minvals == -11024 && entry[0] == "minfloat") {
                         float_minvals = atof(entry[1].c_str());
                         std::cout << "Floating point minimum: " << 
                                   float_minvals << " (chosen from "
                                   "metadata)" << std::endl;
                     }
-                    else if (float_maxvals == 0 && entry[0] == "maxfloat") {
+                    else if (float_maxvals == -11024 && entry[0] == "maxfloat") {
                         float_maxvals = atof(entry[1].c_str());
                         std::cout << "Floating point maximum: " << 
                                      float_maxvals << " (chosen from "

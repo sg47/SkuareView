@@ -51,3 +51,7 @@ kdu_compress.cpp
 kdu_expand.cpp
     Add args parameter when initializing kdu_image_out classes (enclosed in #ifdef for our project).
     You will also need to move the line "args.show_unrecognized..." to after the #ifdef
+image_local_helpers.h
+    All the methods declared in this header are defined within image_in.cpp (possiblity image_out.cpp),
+    they will be static in a clean version of kakadu. The static keyword needs to be removed, before
+    all these functions.

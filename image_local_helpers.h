@@ -1,13 +1,12 @@
-// TODO: document
 /*****************************************************************************/
 //  
-//  @file: fits_local.h
+//  @file: image_local_helpers.h
 //  Project: Skuareview-NGAS-plugin
 //
 //  @author Sean Peters
-//  @date 29/07/12.
-//  @brief The The file contains the definitions of types and classes
-//  @brief for the FITS image format.
+//  @date 01/03/13.
+//  @brief These helper methods are defined within apps in the kakadu library. They
+//  are required by code within are classes.
 //  Copyright (c) 2012 University of Western Australia. All rights reserved.
 //
 /*****************************************************************************/

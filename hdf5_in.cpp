@@ -86,7 +86,6 @@ convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num,
                          short domain, std::ofstream& before, 
                          std::ofstream& after)
 {
-    // Floats are always signed but I left this in anyway
     float factor, scale, offset=0.0;
     float limmin=-0.75, limmax=0.75;
     offset = -0.5;
@@ -94,8 +93,8 @@ convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num,
     /* The images captured in radio astronomy have extremely dynamic range of
      * values. As such a linear scaling will often result an over compressed 
      * image, because most of the data will end up being extremely close 
-     * together between -0,5 and 0.5. As such we use a log or sqrt domain to
-     * minimize the loss in precision */
+     * together. As such we use a log or sqrt domain to minimize the loss in 
+     * precision */
     if (domain == 0) { // log domain 
         factor = 500;
         scale = 1 / log(fabs(maxval - minval) * factor + 1);
@@ -140,9 +139,10 @@ convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num,
 /* STATIC                  convert_TFLOAT_to_ints                          */
 /*****************************************************************************/
 static void
-convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
+convert_TFLOAT_to_ints(float *src, kdu_line_buf &line,  int num,
                          int precision, bool is_signed,
-                         double minval, double maxval, int sample_bytes)
+                         double minval, double maxval, int sample_bytes,
+                         std::ofstream& before, std::ofstream& after)
 {
     double scale, offset=0.0;
     double limmin=-0.75, limmax=0.75;
@@ -154,22 +154,51 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
     offset *= (double)(1<<precision);
     limmin *= (double)(1<<precision);
     limmax *= (double)(1<<precision);
-    if (sample_bytes == 4)
-      { // Transfer floats to ints
+
+    if (line.get_buf16() != NULL) {
+        kdu_sample16* dest = line.get_buf16();
+        if (dest == NULL)
+            std::cout << "Oh noes" << std::endl;
+        // Convert floats to 16 bit integers
+        for (int i = 0; i<num; ++i)
+        {
+            double fval = (double)((src[i] - minval) * scale + offset);
+            fval = (fval > limmin)?fval:limmin;
+            fval = (fval < limmax)?fval:limmax;
+            dest[i].ival = (kdu_int16) fval;
+            if (before.is_open() && after.is_open()) {
+                before << src[i] << " ";
+                after << dest[i].ival << " ";
+            }
+        }
+    }
+    else if (line.get_buf32() != NULL)
+    { // Convert floats to 32 bit integers
+        kdu_sample32* dest = line.get_buf32();
           for (int i = 0; i<num; ++i)
           {
-              double fval = (float)((src[i] - minval) * scale + offset);
+              double fval = (double)((src[i] - minval) * scale + offset);
               fval = (fval > limmin)?fval:limmin;
               fval = (fval < limmax)?fval:limmax;
               dest[i].ival = (kdu_int32) fval;
+              if (before.is_open() && after.is_open()) {
+                  before << src[i] << " ";
+                  after << dest[i].ival << " ";
+              }
           }
-      }
+    }
     else if (sample_bytes == 8)
       { // Transfer doubles to ints, with some scaling
         kdu_error e; e << "double to int conversion not implemented";
       }
-    else
+    else {
       assert(0);
+    }
+
+    if (before.is_open() && after.is_open()) {
+        before << std::endl;
+        after << std::endl;
+    }
 }
 
 /* ========================================================================= */
@@ -191,6 +220,7 @@ hdf5_in::hdf5_in(const char *fname,
     incomplete_lines = NULL;
     free_lines = NULL;
     num_unread_rows = 0;
+    domain=2;
    
     if (!parse_hdf5_parameters(args, dims)) 
         { kdu_error e; e << "Unable to parse HDF5 parameters"; }
@@ -201,9 +231,8 @@ hdf5_in::hdf5_in(const char *fname,
         { kdu_error e; e << "Unable to open input HDF5 file."; }
     
     // Open the dataset
-    dataset = H5Dopen(file, "full_cube", H5P_DEFAULT); // TODO: dynamic data set name
-                                                       // this would conflict with
-                                                       // min/max idea
+    // TODO: Currently can only read HDF5 images with dataset "full_cube"
+    dataset = H5Dopen(file, "full_cube", H5P_DEFAULT); 
     if (dataset < 0) 
         { kdu_error e; e << "Unable to open dataset in HDF5 file."; }
     
@@ -255,10 +284,12 @@ hdf5_in::hdf5_in(const char *fname,
                             "unimplemented"; } 
 
     // Check for forced precision
-    bool align_lsbs = false; // TODO: true or false?
+    bool align_lsbs = false; // TODO: Read kakadu documentation - true or false?
     int forced_prec = dims.get_forced_precision(next_comp_idx, align_lsbs);
-    if (forced_prec > 0)
+    if (forced_prec > 0) {
         precision = forced_prec;
+        sample_bytes = precision / 8;
+    }
 
     // Get the dataspace of the the dataset
     dataspace = H5Dget_space(dataset);
@@ -326,9 +357,6 @@ hdf5_in::hdf5_in(const char *fname,
         extent[0] = crop_width;
         extent[1] = crop_height; 
     }
-    // TODO: Documentation on get_cropping is poor, as such if cropping has not been
-    // specified it is only my current assumption that it will return false
-    // I currently can't test the above as my only example file is over 1TB
     else { // No cropping specified, default is the whole image
         offset[0] = offset[1] = 0;
         extent[0] = cinfo.width;
@@ -356,6 +384,7 @@ hdf5_in::hdf5_in(const char *fname,
         num_components = 1;
     }
     
+    // TODO: 4 dimensions is untested, and will likely never be used.
     // If we have 4 or more dimensions
     if (cinfo.naxis > 3) { 
         // No cropping was specified on this dimension
@@ -517,10 +546,6 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
         // Select the length of the z dimension, this will become a row (x dim)
         // in our image.
 
-        //std::cout << std::endl;
-        //for (int i = 0; i < 3; ++i) 
-            //std::cout << offset_out[i] << " for " << dims_mem[i] << std::endl;
-
         hsize_t temp = offset_out[0];
         offset_out[0] = offset_out[2];
         offset_out[2] = temp;
@@ -543,25 +568,14 @@ hdf5_in::get(int comp_idx, // component index. We use components for frames
                     { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
 
                 if (line.is_absolute())
-                    convert_TFLOAT_to_ints(buffer, line.get_buf32(), width,
+                    convert_TFLOAT_to_ints(buffer, line, width,
                             precision, true, float_minvals, float_maxvals, 
-                            sample_bytes);
+                            sample_bytes, raw_before, raw_after);
                 else
                     convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
                         is_signed, float_minvals, float_maxvals, domain, 
                         raw_before, raw_after);
 
-                // TODO: HDF5 has no way of determining the min or max float value
-                // this is important for normalizing the floats for Kadaku. The
-                // below is a way to get the values in a trial and then hardcode
-                // for the next use.
-                //for (int i = 0; i < width; ++i) {
-                //    if (buffer[i] < min)
-                //      min = buffer[i];
-                //    if (buffer[i] > max)
-                //        max = buffer[i];
-                //}
-                
                 free(buffer);
                 break;
             }
