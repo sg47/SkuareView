@@ -94,59 +94,40 @@ typedef struct {
     int t_class; // Image data type.  Similar to BITPIX in CFITSIO
 }  hdf5_cube_info;
 
-class hdf5_in;
+class hdf5_source_file;
 
 /*****************************************************************************/
 /*                             class hdf5_in                                 */
 /*****************************************************************************/
 
-class hdf5_in : public kdu_image_in_base {
+class hdf5_source_file : public ska_source_file {
 public: // Member functions
-    hdf5_in(const char *fname, kdu_args &args, kdu_image_dims &dims,  
-            int &next_comp_idx, bool &vflip, kdu_rgb8_palette *palette);
-    ~hdf5_in();
-    bool get(int comp_idx, kdu_line_buf &line, int x_tnum);
-private: // Members describing the organization of the FITS data
-    hdf5_param h5_param;;
-    hid_t file; // File handle for the HDF5 handle
-    hid_t dataset;
-    hid_t dataspace;
-    hid_t datatype;
-    hid_t memspace;
-    H5T_order_t order; // Data order (littlendian or bigendian)
-
-    hsize_t* dims_mem; // Dimensions of data stored in memory
-
-    hsize_t* offset; // The offset of the dimensions of the HDF5 image that we're 
-                 // converting.
-    hsize_t* offset_out; // Offset within the already selected hyperslab
-    hsize_t* extent; // The extent of each of the dimensions of the hyperslab in 
-                     // the file. i.e. length, breadth, etc.
-
-    hdf5_cube_info cinfo;
-        
-    float float_minvals; // When HDF5 file contains floating-point samples
-    float float_maxvals; // When HDF5 file contains floating-point samples
-    short domain;
-    //kdu_uint16 bitspersample;
-    kdu_simple_file_source src;
-   
-    std::ofstream raw_before, raw_after; // Output the values of decoded before
-                                         // and after renormalization to a raw
-                                         // data file for testing analysis
-    bool is_signed; // Whether the data is signed or not
-    bool littlendian; // true if data order is littlendian
-    int first_comp_idx;
-    int num_components; // May be > `samplesperpixel' if there is a palette
-    int precision;
-    int sample_bytes; // After expanding any palette
-    int num_unread_rows; // Always starts at `rows', even with cropping
-    int total_rows; // Used for progress bar
-    image_line_buf *incomplete_lines; // Each "sample" represents a full pixel
-    image_line_buf *free_lines;
-    //--------------------------------------------------------------------------
+  void read_header(kdu_args args);
+  void read_stripe(int height, kdu_int16 *buf);
+private: // Members describing the organization of the HDF5 data
+  hdf5_param h5_param;
+  hid_t file; // File handle for the HDF5 handle
+  hid_t dataset;
+  hid_t dataspace;
+  hid_t datatype;
+  hid_t memspace;
+  H5T_order_t order; // Data order (littlendian or bigendian)
+  hsize_t* dims_mem; // Dimensions of data stored in memory
+  hsize_t* offset; // The offset of the dimensions of the HDF5 image that we're 
+                   // converting.
+  hsize_t* offset_out; // Offset within the already selected hyperslab
+  hsize_t* extent; // The extent of each of the dimensions of the hyperslab in 
+                   // the file. i.e. length, breadth, etc.
+  hdf5_cube_info cinfo;
+      
+  short domain;
+ 
+  bool littlendian; // true if data order is littlendian
+  int first_comp_idx;
+  int num_unread_rows; // Always starts at `rows', even with cropping
+  int total_rows; // Used for progress bar
 private: // Members which are affected by (or support) cropping
-    bool parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims);
+  bool parse_hdf5_parameters(kdu_args &args);
 };
 
 /*****************************************************************************/

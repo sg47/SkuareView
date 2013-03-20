@@ -57,6 +57,7 @@
 /******************************************************************************/
 
 // System includes
+#include <utility>
 #include <iostream>
 #include <fstream>
 #include <string.h>
@@ -141,7 +142,7 @@ convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num,
 static void
 convert_TFLOAT_to_ints(float *src, kdu_line_buf &line,  int num,
                          int precision, bool is_signed,
-                         double minval, double maxval, int sample_bytes,
+                         double minval, double maxval, int bytes_per_sample,
                          std::ofstream& before, std::ofstream& after)
 {
     double scale, offset=0.0;
@@ -187,7 +188,7 @@ convert_TFLOAT_to_ints(float *src, kdu_line_buf &line,  int num,
               }
           }
     }
-    else if (sample_bytes == 8)
+    else if (bytes_per_sample == 8)
       { // Transfer doubles to ints, with some scaling
         kdu_error e; e << "double to int conversion not implemented";
       }
@@ -209,20 +210,14 @@ convert_TFLOAT_to_ints(float *src, kdu_line_buf &line,  int num,
 /*                               hdf5_in::hdf5_in                            */
 /*****************************************************************************/
 
-hdf5_in::hdf5_in(const char *fname, 
-                 kdu_args &args, 
-                 kdu_image_dims &dims, 
-                 int &next_comp_idx,
-                 bool &vflip,
-                 kdu_rgb8_palette *palette)
+hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args)
 {
     // Initialize the state incase we need to cleanup prematurely
-    incomplete_lines = NULL;
-    free_lines = NULL;
     num_unread_rows = 0;
     domain=2;
+    num_components = 1;
    
-    if (!parse_hdf5_parameters(args, dims)) 
+    if (!parse_hdf5_parameters(args)) 
         { kdu_error e; e << "Unable to parse HDF5 parameters"; }
 
     // Open the file
@@ -270,8 +265,8 @@ hdf5_in::hdf5_in(const char *fname,
     }
 
     // Get the number of bytes that represent each sample
-    sample_bytes = H5Tget_size(datatype); 
-    if (sample_bytes == 0) 
+    bytes_per_sample = H5Tget_size(datatype); 
+    if (bytes_per_sample == 0) 
         { kdu_error e; e << "Unable to get sample bytes of dataset in HDF5 "
                             "file."; }
     
@@ -279,16 +274,15 @@ hdf5_in::hdf5_in(const char *fname,
     precision = H5Tget_precision(datatype);
     if (precision == 0) 
         { kdu_error e; e << "Unable to get precision of dataset in HDF5 file."; }
-    else if (precision != 8 * sample_bytes)
+    else if (precision != 8 * bytes_per_sample)
         { kdu_error e; e << "Padding in sample bytes. Handling for this is "
                             "unimplemented"; } 
 
     // Check for forced precision
     bool align_lsbs = false; // TODO: Read kakadu documentation - true or false?
-    int forced_prec = dims.get_forced_precision(next_comp_idx, align_lsbs);
     if (forced_prec > 0) {
         precision = forced_prec;
-        sample_bytes = precision / 8;
+        bytes_per_sample = precision / 8;
     }
 
     // Get the dataspace of the the dataset
@@ -304,7 +298,8 @@ hdf5_in::hdf5_in(const char *fname,
                             "dataspace of dataset in HDF5 file."; }
                             
     // Get the extent of the dimensions of the dataspace
-    hsize_t* dims_dataset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis); // Dataset dimensions
+    // Dataset dimensions
+    hsize_t* dims_dataset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);     
     if (H5Sget_simple_extent_dims(dataspace, dims_dataset, NULL) != cinfo.naxis)
     { kdu_error e; e << "Unable to get dimensions of the dataspace of "
                         "dataset in HDF5 file."; }
@@ -312,6 +307,9 @@ hdf5_in::hdf5_in(const char *fname,
     // Input dimensions (FREQ,DEC,RA) as (x,y,z)
     // Output  dimensions (RA,DEC,FREQ) as (x,y,z) 
 
+    // We currently only encode 2 dimensions. See struct croping in ska_sources    
+    // for more details.
+    cinfo.naxis = 2;
     cinfo.width = (unsigned long)dims_dataset[2];
     cinfo.height = (unsigned long)dims_dataset[1];
         
@@ -319,93 +317,32 @@ hdf5_in::hdf5_in(const char *fname,
            "rank = " << (unsigned int)(cinfo.naxis) << "\n" << 
            "rows = " << (unsigned int)(cinfo.height) << "\n" << 
            "cols = " << (unsigned int)(cinfo.width) << "\n";  
-   
-    if (cinfo.naxis == 3) {
-        cinfo.depth = (unsigned long)dims_dataset[0];
-        std::cout << "frames = " << (unsigned int)(cinfo.depth) << "\n";
-    }
-    if (cinfo.naxis == 4) {
-        cinfo.stokes = (unsigned long)dims_dataset[3];
-        std::cout << "stokes = " << (unsigned int)(cinfo.stokes) << "\n";
-    }
-    
     free(dims_dataset);
 
     // Now we handle the cropping parameter
-    // Note: This parameter will only handle 2 dimensions of cropping, we have
-    // to handle the other(s) seperately.
     
-    int crop_y, crop_x, crop_height, crop_width;
     // Offset of cube to be encoded within the original file image
     offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
     // Extent of each dimension of the cube to be encoded
     extent = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
     
-    if (dims.get_cropping(crop_y, crop_x, crop_height, crop_width, next_comp_idx)) {
-        if ((crop_x < 0) || (crop_y < 0)) 
-            { kdu_error e; e << "Requested input file cropping parameters are "
-            "illegal -- cannot have negative cropping offsets."; }
-        if ((crop_x + crop_width) > cinfo.width)
+    if (crop.specified) {
+        if ((crop.x + crop.width) > cinfo.width)
             { kdu_error e; e << "Requested input file cropping parameters are "
             "not compatible with actual image dimensions.  The cropping "
             "region would cross the right hand boundary of the image."; }
-        if ((crop_y + crop_height) > cinfo.height)
+        if ((crop.y + crop.height) > cinfo.height)
             { kdu_error e; e << "Requested input file cropping parameters are "
             "not compatible with actual image dimensions. The cropping "
             "region would cross the the lower hand boundary of the image."; }
-        offset[0] = crop_x;     offset[1] = crop_y;
-        extent[0] = crop_width;
-        extent[1] = crop_height; 
+        offset[0] = crop.x;     offset[1] = crop.y;
+        extent[0] = crop.width; extent[1] = crop.height;
     }
     else { // No cropping specified, default is the whole image
         offset[0] = offset[1] = 0;
         extent[0] = cinfo.width;
         extent[1] = cinfo.height;
-    }
-
-    // If we have 3 dimensions
-    if (cinfo.naxis > 2) {
-        // No cropping was specified on this dimension
-        if (h5_param.end_frame == 0) {
-            extent[2] = cinfo.depth;
-            offset[2] = 0;
-        }
-        // Cropping was specified on this dimension
-        else {
-            extent[2] = abs(h5_param.end_frame - h5_param.start_frame);
-            offset[2] = h5_param.start_frame - 1;
-        }
-        if (cinfo.depth < extent[2])
-            { kdu_error e; e << "The number of available frames in the HDF5 file"
-            " is less than requested."; }        
-        num_components = extent[2]; 
-    }
-    else {
-        num_components = 1;
-    }
-    
-    // TODO: 4 dimensions is untested, and will likely never be used.
-    // If we have 4 or more dimensions
-    if (cinfo.naxis > 3) { 
-        // No cropping was specified on this dimension
-        if (h5_param.end_stoke == 0) { 
-            offset[3] = 0;
-            extent[3] = cinfo.stokes;
-        }
-        // Cropping was specified on this dimension
-        else {
-            extent[3] = abs(h5_param.end_stoke - h5_param.start_stoke); offset[3] = h5_param.start_stoke;
-        }
-        if (cinfo.stokes < extent[3]) 
-            { kdu_error e; e << "The number of available stokes in the HDF5 "
-            "files is less than requested."; }
-        for (int i = 4; i < cinfo.naxis; ++i) {
-            offset[i] = 0;
-            extent[i] = 1;
-            if (dims_dataset[i] > 1)
-                { kdu_error e; e << "Dimension " << i+1 << " has a length "
-                " greater than 1."; }
-        }
+        extent[2] = cinfo.depth;
     }
 
     // Define the memory space that will be used by get
@@ -481,11 +418,6 @@ hdf5_in::~hdf5_in()
         w << "Not all rows of image component "
         << first_comp_idx << " were consumed!";
     }
-    image_line_buf *tmp;
-    while ((tmp=incomplete_lines) != NULL)
-    { incomplete_lines = tmp->next; delete tmp; }
-    while ((tmp=free_lines) != NULL)
-    { free_lines = tmp->next; delete tmp; }
     
     free(offset);
     free(extent);
@@ -505,129 +437,84 @@ hdf5_in::~hdf5_in()
 /*****************************************************************************/
 
 bool
-hdf5_in::get(int comp_idx, // component index. We use components for frames
-             kdu_line_buf &line, 
-             int x_tnum  // tile number, starts from 0. We use tiles for stokes
-             )
+hdf5_in::read_stripe(int height, kdu_int32 *buf)
+/* Reads in a stripe from the image and places it into buf */
 {
-    // In the context of this message the hyperslab will just be the line.
-    int width = line.get_width(); // Number of samples in the line
-    assert((comp_idx >= 0) && (comp_idx < num_components));
+  int width = crop.width; // Number of samples in the line
     
-    image_line_buf *scan, *prev = NULL;
-    for (scan = incomplete_lines; scan != NULL; prev = scan, scan = scan->next) {
-        assert(scan->next_x_tnum >= x_tnum);
-        if (scan->next_x_tnum == x_tnum)
-            break;
+  // We select the hyperslab (cropped image cube) that will be encoded
+
+  // Select the length of the z dimension of the hdf5 image, this will become 
+  // a row (x dim) in our jpeg2000 image.
+
+  std::swap (offset_out[0], offset_out[2]);
+  if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, 
+              dims_mem, NULL) < 0)
+      { kdu_error e; e << "Unable to select cropped hyperslab of dataset in"
+                          "HDF5 file."; }
+  std::swap (offset_out[0], offset_out[2]);
+
+  // TODO: extend to all types (don't have other test data at the moment.
+
+  switch (cinfo.t_class) {       
+    case H5T_FLOAT: { 
+      // We finally actually read the values from the HDF5 image.
+      float* buffer = (float*) malloc(sizeof(float)*width);
+
+      if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
+                  H5P_DEFAULT, buffer) < 0)
+        { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
+
+      if (line.is_absolute())
+        convert_TFLOAT_to_ints(buffer, line, width,
+                  precision, true, float_minvals, float_maxvals, 
+                  bytes_per_sample, raw_before, raw_after);
+      else
+        convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
+            is_signed, float_minvals, float_maxvals, domain, 
+              raw_before, raw_after);
+
+      free(buffer);
+      break;
     }
-    if (scan == NULL) {
-        // Need to read a new image line.
-        assert(x_tnum == 0);
-        if (num_unread_rows == 0)
-           return false;
-        
-        if ((scan = free_lines) == NULL)
-            scan = new image_line_buf(width, sample_bytes);
-
-        // Big enough for padding and expanding bits to bytes
-        free_lines = scan->next;
-        if (prev == NULL)
-            incomplete_lines = scan;
-        else
-            prev->next = scan;
-        scan->accessed_samples = 0;
-        scan->next_x_tnum = 0;
-    
-        // Class of input dataset
-        // Currently reading row by row
-        
-        // We select the hyperslab (cropped image cube) that will be encoded
-
-        // Select the length of the z dimension, this will become a row (x dim)
-        // in our image.
-
-        hsize_t temp = offset_out[0];
-        offset_out[0] = offset_out[2];
-        offset_out[2] = temp;
-        if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, 
-                    dims_mem, NULL) < 0)
-            { kdu_error e; e << "Unable to select cropped hyperslab of dataset in"
-                                "HDF5 file."; }
-        temp = offset_out[0];
-        offset_out[0] = offset_out[2];
-        offset_out[2] = temp;
-
-        switch (cinfo.t_class) { // TODO: extend to all types (don't have other 
-                                 // test data at the moment.
-            case H5T_FLOAT: { 
-                // We finally actually read the values from the HDF5 image.
-                float* buffer = (float*) malloc(sizeof(float)*width);
-
-                if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
-                            H5P_DEFAULT, buffer) < 0)
-                    { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
-
-                if (line.is_absolute())
-                    convert_TFLOAT_to_ints(buffer, line, width,
-                            precision, true, float_minvals, float_maxvals, 
-                            sample_bytes, raw_before, raw_after);
-                else
-                    convert_TFLOAT_to_floats(buffer, line.get_buf32(), width,
-                        is_signed, float_minvals, float_maxvals, domain, 
-                        raw_before, raw_after);
-
-                free(buffer);
-                break;
-            }
-            default: 
-                kdu_error e; e << "Unimplemented class type."; 
-                break; 
-        }
-        
-        // Incremement position in HDF5 file
-        // Indices represent:
-        // 0 col
-        // 1 row
-        // 2 frame
-        // 3 stoke
-        offset_out[0] = offset[0]; // set col to beginning of next line
-        if (offset_out[1] == offset[1] + extent[1] - 1) { // just read last row in frame
-            offset_out[1] = offset[1]; // set row to beginning of next frame
-            if (cinfo.naxis > 2 && cinfo.depth > 1) {
-                if (offset_out[2] != offset[2] + extent[2] - 1) {
-                    offset_out[2]++; // next frame
-                    ++comp_idx;      // new frame - next component
-                }
-                else if (cinfo.naxis > 3 && cinfo.stokes > 1) {
-                    offset_out[2] = offset[2]; // set to beginning of
-                                               // next stoke
-                    offset_out[3]++; // new stoke
-                    scan->next_x_tnum++; // next tile
-                }
-            }
-        }
-        else {
-            offset_out[1]++; // otherwise just go to next row
-        }
-        num_unread_rows--;
-    }
-
-    assert((scan->width - scan->accessed_samples) >= width);
-    scan->accessed_samples += scan->width;
-    if (scan->accessed_samples == scan->width) {
-        assert(scan == incomplete_lines);
-        incomplete_lines = scan->next;
-        scan->next = free_lines;
-        free_lines = scan;
-    }
-    return true;
+    default: 
+      kdu_error e; e << "Unimplemented class type."; 
+      break; 
+  }
+      
+  // Incremement position in HDF5 file
+  // Indices represent:
+  // 0 col
+  // 1 row
+  // 2 frame
+  // 3 stoke
+  offset_out[0] = offset[0]; // set col to beginning of next line
+  if (offset_out[1] == offset[1] + extent[1] - 1) { // just read last row in frame
+      offset_out[1] = offset[1]; // set row to beginning of next frame
+      if (cinfo.naxis > 2 && cinfo.depth > 1) {
+          if (offset_out[2] != offset[2] + extent[2] - 1) {
+              offset_out[2]++; // next frame
+              ++comp_idx;      // new frame - next component
+          }
+          else if (cinfo.naxis > 3 && cinfo.stokes > 1) {
+              offset_out[2] = offset[2]; // set to beginning of
+                                         // next stoke
+              offset_out[3]++; // new stoke
+              scan->next_x_tnum++; // next tile
+          }
+      }
+  }
+  else {
+      offset_out[1]++; // otherwise just go to next row
+  }
+  num_unread_rows--;
 }
 
 /*****************************************************************************/
 /*                     hdf5_in::parse_hdf5_parameters                        */
 /*****************************************************************************/
 
-bool hdf5_in::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
+bool hdf5_in::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
 {
     if (args.get_first() != NULL) {
         /* Ouput the values encoded before and after renormalization to a raw
@@ -759,6 +646,7 @@ bool hdf5_in::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
                             0xBC,0xFD,0x08,0x00,
                             0x20,0x0C,0x9A,0x66};
 
+    // TODO: Redundant code here almost certainly
     kdu_byte* box_buf = (kdu_byte*) malloc (BUFSIZ); // Should be plenty
     int box_buf_idx = 0, len = 0;
     char* tmp = (char*) malloc (sizeof(char) * 128);
@@ -782,13 +670,17 @@ bool hdf5_in::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
         box_buf[box_buf_idx] = tmp[i];
 
     box_buf_idx--;
-
-    jp2_output_box *h5_box = dims.add_source_metadata(jp2_uuid_4cc);
-
     h5_box->write(h5_uuid, 16); // unique identifier
     h5_box->write(box_buf, box_buf_idx);
-
     free(box_buf);
+
+    jp2_output_box *h5_box = jp2_output_box();
+    kdu_uint32 box_type = box_ref->get_box_type();
+    const kdu_byte *contents = box_ref->get_contents(len);
+    out.open(tgt,box_type);
+    out.set_target_size(len);
+    out.write(contents,(int) len);
+    out.close();
 
     return true;
 }
