@@ -279,7 +279,6 @@ hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args)
                             "unimplemented"; } 
 
     // Check for forced precision
-    bool align_lsbs = false; // TODO: Read kakadu documentation - true or false?
     if (forced_prec > 0) {
         precision = forced_prec;
         bytes_per_sample = precision / 8;
@@ -298,20 +297,16 @@ hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args)
                             "dataspace of dataset in HDF5 file."; }
                             
     // Get the extent of the dimensions of the dataspace
-    // Dataset dimensions
     hsize_t* dims_dataset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);     
     if (H5Sget_simple_extent_dims(dataspace, dims_dataset, NULL) != cinfo.naxis)
     { kdu_error e; e << "Unable to get dimensions of the dataspace of "
                         "dataset in HDF5 file."; }
        
-    // Input dimensions (FREQ,DEC,RA) as (x,y,z)
-    // Output  dimensions (RA,DEC,FREQ) as (x,y,z) 
-
-    // We currently only encode 2 dimensions. See struct croping in ska_sources    
-    // for more details.
-    cinfo.naxis = 2;
+    /* Input dimensions (FREQ,DEC,RA) as (x,y,z)
+     * Output  dimensions (RA,DEC,FREQ) as (x,y,z) */
     cinfo.width = (unsigned long)dims_dataset[2];
     cinfo.height = (unsigned long)dims_dataset[1];
+    cinfo.depth = (unsigned long)dims_dataset[0];
         
     std::cout << "HDF5 image dimensions:\n"
            "rank = " << (unsigned int)(cinfo.naxis) << "\n" << 
@@ -320,7 +315,7 @@ hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args)
     free(dims_dataset);
 
     // Now we handle the cropping parameter
-    
+
     // Offset of cube to be encoded within the original file image
     offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
     // Extent of each dimension of the cube to be encoded
@@ -335,14 +330,15 @@ hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args)
             { kdu_error e; e << "Requested input file cropping parameters are "
             "not compatible with actual image dimensions. The cropping "
             "region would cross the the lower hand boundary of the image."; }
-        offset[0] = crop.x;     offset[1] = crop.y;
-        extent[0] = crop.width; extent[1] = crop.height;
+        offset[0] = crop.x; extent[0] = crop.width;         
+        offset[1] = crop.y; extent[1] = crop.height;
+        offset[2] = crop.z; extent[2] = 1;
     }
     else { // No cropping specified, default is the whole image
-        offset[0] = offset[1] = 0;
+        offset[0] = offset[1] = offset[2] = 0;
         extent[0] = cinfo.width;
         extent[1] = cinfo.height;
-        extent[2] = cinfo.depth;
+        extent[2] = 1;
     }
 
     // Define the memory space that will be used by get
@@ -438,9 +434,12 @@ hdf5_in::~hdf5_in()
 
 bool
 hdf5_in::read_stripe(int height, kdu_int32 *buf)
-/* Reads in a stripe from the image and places it into buf */
+/* Reads in a stripe from the image and places it into buf. We make the rather
+ * dangerous assumption that the stripe height provided will never exceed the
+ * bounds of the image from our current index in the cube. */
 {
   int width = crop.width; // Number of samples in the line
+  dims_mem[1] = height;
     
   // We select the hyperslab (cropped image cube) that will be encoded
 
@@ -455,7 +454,6 @@ hdf5_in::read_stripe(int height, kdu_int32 *buf)
   std::swap (offset_out[0], offset_out[2]);
 
   // TODO: extend to all types (don't have other test data at the moment.
-
   switch (cinfo.t_class) {       
     case H5T_FLOAT: { 
       // We finally actually read the values from the HDF5 image.
@@ -482,12 +480,11 @@ hdf5_in::read_stripe(int height, kdu_int32 *buf)
       break; 
   }
       
-  // Incremement position in HDF5 file
-  // Indices represent:
-  // 0 col
-  // 1 row
-  // 2 frame
-  // 3 stoke
+  /* Incremement position in HDF5 file
+   * Indices represent:
+   * 0 col
+   * 1 row
+   * 2 frame */
   offset_out[0] = offset[0]; // set col to beginning of next line
   if (offset_out[1] == offset[1] + extent[1] - 1) { // just read last row in frame
       offset_out[1] = offset[1]; // set row to beginning of next frame
@@ -496,18 +493,12 @@ hdf5_in::read_stripe(int height, kdu_int32 *buf)
               offset_out[2]++; // next frame
               ++comp_idx;      // new frame - next component
           }
-          else if (cinfo.naxis > 3 && cinfo.stokes > 1) {
-              offset_out[2] = offset[2]; // set to beginning of
-                                         // next stoke
-              offset_out[3]++; // new stoke
-              scan->next_x_tnum++; // next tile
-          }
       }
   }
   else {
-      offset_out[1]++; // otherwise just go to next row
+      offset_out[1] += height; // otherwise just go to next row
   }
-  num_unread_rows--;
+  num_unread_rows -= height;
 }
 
 /*****************************************************************************/
@@ -516,172 +507,19 @@ hdf5_in::read_stripe(int height, kdu_int32 *buf)
 
 bool hdf5_in::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
 {
-    if (args.get_first() != NULL) {
-        /* Ouput the values encoded before and after renormalization to a raw
-         * data file for testing analysis*/
-        if (args.find("-rawtest") != NULL)
-        {
-            /* raw data values before they are normalized for the JPX image. These
-             * can be compared against decoder_after_raw, to see how the precision
-             * of the values compared after they have been renormalized back to
-             * they're origional values. */
-            raw_before.open("encoder_before_rawtest");
+  if (args.get_first() != NULL) {
+    if (args.find("-domain") != NULL)
+    {
+      const char *string = args.advance();
 
-            /* raw data values after they are normalized for the JPX image. These
-             * can be compared against the decoder_before_raw, to see how the 
-             * precision of the values is affected by the internal Kakadu compressor
-             * exclusively. */
-            raw_after.open("encoder_after_rawtest");
-            args.advance();
-        }
-
-        if (args.find("-domain") != NULL)
-        {
-            const char *string = args.advance();
-            
-            if (strcmp("log",string) == 0)
-                domain=0;
-            else if (strcmp("sqrt",string) == 0)
-                domain=1;
-            else
-                domain=2; // linear
-            args.advance();
-        }
-        if (args.find("-minmax") != NULL)
-        {
-            for (int i = 0; i < 2; ++i) {
-                const char *string = args.advance();
-                bool succ = true;
-                for (int j = 0; j < strlen(string); ++j) {
-                    if (! (std::isdigit(string[j]) || 
-                                string[j] == '.' || string[j] == '-'))
-                        succ = false;
-                }
-                if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
-                    succ = false;
-                else if (!succ || (i == 1 && 
-                            (sscanf(string, "%f", &float_maxvals) != 1)))
-                    succ = false;
-                
-                if (!succ)
-                     { kdu_error e; e << "\"-minmax\" argument contains "
-                        "malformed specification. Expected to find two comma-"
-                        "separated float numbers, enclosed by curly braces. "
-                        "Example: -minmax {-1.0,1.0}"; }
-            }
-            args.advance();
-        }
-        else {
-           float_minvals = H5_FLOAT_MIN;
-           float_maxvals = H5_FLOAT_MAX;
-        }
-
-        if (args.find("-iplane") != NULL)
-        {
-            const char *field_sep, *string = args.advance();
-            for (field_sep=NULL; string != NULL; string=field_sep)
-            {
-                if (field_sep != NULL)
-                {
-                    if (*string != ',')
-                    { kdu_error e; e << "\"-iplane\" argument requires a comma-"
-                        "separated first and last plane parameters to read."; }
-                    string++; // Walk past the separator
-                }
-                if (*string == '\0')
-                    break;
-                if (((field_sep = strchr(string,'}')) != NULL) &&
-                    (*(++field_sep) == '\0'))
-                    field_sep = NULL;
-                
-                if ((sscanf(string,"{%ld,%ld}", &h5_param.start_frame,
-                            &h5_param.end_frame) != 2) || (h5_param.start_frame < 1) || 
-                    (h5_param.end_frame < 1) || (h5_param.start_frame >= h5_param.end_frame))
-                { kdu_error e; e << "\"-iplane\" argument contains malformed "
-                    "plane specification.  Expected to find two comma-separated "
-                    "integers, enclosed by curly braces.  They must be strictly "
-                    "positive integers. The second parameter must be larger "
-                    "than the first one"; }
-            }
-            args.advance();
-        }        
-
-        if (args.find("-istok") != NULL)
-        {
-            const char *field_sep, *string = args.advance();
-            for (field_sep=NULL; string != NULL; string=field_sep)
-            {
-                if (field_sep != NULL)
-                {
-                    if (*string != ',')
-                    { kdu_error e; e << "\"-istok\" argument requires a comma-"
-                        "separated first and last Stok parameters to read."; }
-                    string++; // Walk past the separator
-                }
-                if (*string == '\0')
-                    break;
-                if (((field_sep = strchr(string,'}')) != NULL) &&
-                    (*(++field_sep) == '\0'))
-                    field_sep = NULL;
-
-                if ((sscanf(string,"{%ld,%ld}", &h5_param.start_stoke,
-                            &h5_param.end_stoke) != 2) ||
-                    (h5_param.start_stoke < 1) || (h5_param.end_stoke < 1) || 
-                    (h5_param.start_stoke <= h5_param.end_stoke) || 
-                    (h5_param.start_stoke > 5) ||
-                    (h5_param.end_stoke > 5))
-                { kdu_error e; e << "\"-istok\" argument contains malformed "
-                    "stok specification.  Expected to find two comma-separated "
-                    "integers, enclosed by curly braces.  They must be strictly "
-                    "parameter must be larger than the first one"; }
-            }
-            args.advance();
-        }
+      if (strcmp("log",string) == 0)
+        domain=0;
+      else if (strcmp("sqrt",string) == 0)
+        domain=1;
+      else
+        domain=2; // linear
+      args.advance();
     }
-
-    /* Put import parameter details into JPX header as a reference */
-
-    kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,
-                            0x70,0x09,0x11,0xE2,
-                            0xBC,0xFD,0x08,0x00,
-                            0x20,0x0C,0x9A,0x66};
-
-    // TODO: Redundant code here almost certainly
-    kdu_byte* box_buf = (kdu_byte*) malloc (BUFSIZ); // Should be plenty
-    int box_buf_idx = 0, len = 0;
-    char* tmp = (char*) malloc (sizeof(char) * 128);
-    len = sprintf(tmp, "minfloat:%f,", float_minvals);
-    for (int i = 0; i < len; ++i, ++box_buf_idx)
-        box_buf[box_buf_idx] = tmp[i];
-    len = sprintf(tmp, "maxfloat:%f,", float_maxvals);
-    for (int i = 0; i < len; ++i, ++box_buf_idx)
-        box_buf[box_buf_idx] = tmp[i];
-    len = sprintf(tmp, "start_frame:%d,", h5_param.start_frame);
-    for (int i = 0; i < len; ++i, ++box_buf_idx)
-        box_buf[box_buf_idx] = tmp[i];
-    len = sprintf(tmp, "end_frame:%d,", h5_param.end_frame);
-    for (int i = 0; i < len; ++i, ++box_buf_idx)
-        box_buf[box_buf_idx] = tmp[i];
-    len = sprintf(tmp, "start_stoke:%d,", h5_param.start_stoke);
-    for (int i = 0; i < len; ++i, ++box_buf_idx)
-        box_buf[box_buf_idx] = tmp[i];
-    len = sprintf(tmp, "end_stoke:%d,", h5_param.end_frame);
-    for (int i = 0; i < len; ++i, ++box_buf_idx)
-        box_buf[box_buf_idx] = tmp[i];
-
-    box_buf_idx--;
-    h5_box->write(h5_uuid, 16); // unique identifier
-    h5_box->write(box_buf, box_buf_idx);
-    free(box_buf);
-
-    jp2_output_box *h5_box = jp2_output_box();
-    kdu_uint32 box_type = box_ref->get_box_type();
-    const kdu_byte *contents = box_ref->get_contents(len);
-    out.open(tgt,box_type);
-    out.set_target_size(len);
-    out.write(contents,(int) len);
-    out.close();
-
     return true;
-}
+  }
 

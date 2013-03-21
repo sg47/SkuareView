@@ -59,28 +59,12 @@
 //#define H5_FLOAT_MAX 0.00106955
 
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
+#include <fstream>
 #include "kdu_elementary.h"
 #include "kdu_image.h"
 #include "kdu_file_io.h"
 #include "hdf5.h"
-#include <fstream>
-
-typedef struct {
-    long start_frame;// First frame of data cube to read.  Ignored for 2D images.  
-    // Will only be modified if the x parameter is present.  
-    // If only x is specified (and not y), the single x
-    //value will be interpreted as a single frame to read.
-    long end_frame;  // Last frame of data cube to read.  Ignored for 2D images.  
-    // Will only be modified if the y parameter is present.
-    long start_stoke; // startStoke First stoke of data volume to read.  Ignored 
-    // for 2D or 3D images.  Will only be modified if the S1 
-    // parameter is present.  If only S1 is specified (and not 
-    // S2), the single S1 value will be interpreted as a single 
-    // stoke to read.
-    long end_stoke; // Last stoke of data volume to read.  Ignored for 2D or 3D 
-    // images.  Will only be modified if the S2 parameter is 
-    // present.
-} hdf5_param;
+#include "ska_sources.h"
 
 /**
  * Structure for defining essential properties of a HDF5 datacube.
@@ -89,10 +73,9 @@ typedef struct {
     long width; // Image width
     long height; // Image height
     long depth; // Image depth. Arbitrary for 2D images
-    long stokes; // Number of stokes in image. Arbitrary for 2D or 3D images
     int naxis;
     int t_class; // Image data type.  Similar to BITPIX in CFITSIO
-}  hdf5_cube_info;
+} hdf5_cube_info;
 
 class hdf5_source_file;
 
@@ -103,9 +86,8 @@ class hdf5_source_file;
 class hdf5_source_file : public ska_source_file {
 public: // Member functions
   void read_header(kdu_args args);
-  void read_stripe(int height, kdu_int16 *buf);
+  void read_stripe(int height, kdu_int32 *buf);
 private: // Members describing the organization of the HDF5 data
-  hdf5_param h5_param;
   hid_t file; // File handle for the HDF5 handle
   hid_t dataset;
   hid_t dataspace;
@@ -116,10 +98,11 @@ private: // Members describing the organization of the HDF5 data
   hsize_t* offset; // The offset of the dimensions of the HDF5 image that we're 
                    // converting.
   hsize_t* offset_out; // Offset within the already selected hyperslab
-  hsize_t* extent; // The extent of each of the dimensions of the hyperslab in 
-                   // the file. i.e. length, breadth, etc.
-  hdf5_cube_info cinfo;
-      
+  // The extent of each of the dimensions of the hyperslab in the file. i.e. 
+  // length, breadth, etc.
+  hsize_t* extent; 
+  // Describes the entire HDF5 cube and not just the selection we are encoding
+  hdf5_cube_info cinfo;       
   short domain;
  
   bool littlendian; // true if data order is littlendian
@@ -134,16 +117,13 @@ private: // Members which are affected by (or support) cropping
 /*                             class hdf5_out                                */
 /*****************************************************************************/
 
-class hdf5_out : public kdu_image_out_base {
+class hdf5_output_file : public ska_output_file {
   public: // Member functions
-    hdf5_out(const char *fname, kdu_args& args, kdu_image_dims& dims,
-            int& next_comp_idx, bool quiet);
-    ~hdf5_out();
-    void put(int comp_idx, kdu_line_buf &line, int x_tnum);
+    void write_header();      
+    void put(int height, kdu_int32 *buf);
   private: // Data
-    hdf5_param h5_param;;
-    hdf5_cube_info cinfo; // Contains the essential structural information for
-                          // an HDF5 image cube
+    // Describes the HDF5 cube we are writing to
+    hdf5_cube_info cinfo; 
     hid_t file; // File handle for the HDF5 file
     hid_t dataset;
     hid_t dataspace;
@@ -159,25 +139,13 @@ class hdf5_out : public kdu_image_out_base {
     hsize_t* dest_dims; // Dimensions of destination HDF5 image
     hsize_t* offset; // Offset within the JPEG2000 image
 
-    int first_comp_idx;
     int num_components;
-    int precision;
-    float float_minvals, float_maxvals;
     short domain;
-    bool forced_align_lsbs;
-    int *orig_precision; // All equal to above unless `precision' is forced.
-    bool *is_signed; // One entry for each component
-    std::ofstream raw_before, raw_after; // Output the values of decoded before
-                                         // and after renormalization to a raw
-                                         // data file for testing analysis
+
     int scanline_width, unpacked_samples;
     int sample_bytes, pixel_bytes, row_bytes;
     bool pre_pack_littlendian; // Scanline byte order prior to packing
-    image_line_buf *incomplete_lines; // Each "sample" represents a full pixel
-    image_line_buf *free_lines;
     int num_unwritten_rows;
-    kdu_simple_file_target out;
-    int initial_non_empty_tiles; // tnum >= this implies empty; 0 until we know
     //--------------------------------------------------------------------------
 private: // Members which are affected by (or support) cropping
     bool parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims);
