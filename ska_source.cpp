@@ -10,7 +10,7 @@ void
   in = NULL;
   if ((suffix = strchr(fname, '.')) != NULL) {
     if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0))
-      in = new hdf5_source_file();
+      in = new hdf5_in();
   }
   if (in == NULL)
   { kdu_error e; e << "Image file, \"" << fname << ", does not have a "
@@ -25,7 +25,12 @@ void
 void
   ska_source_file::read_stripe(int height, kdu_int32 *buf)
 {
-
+  // "this" is passed as a method of mimicing inheritance
+  // the reason why have to do it this way is because "kdu_buffered_compress"
+  // won't know which implementation to use for which file format. And we want
+  // to minimize any changes we make to the app, as new versions of Kakadu
+  // may be released.
+  in->read_stripe(height, buf, this);
 }
 
 /*****************************************************************************/

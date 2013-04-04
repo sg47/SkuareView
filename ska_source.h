@@ -1,3 +1,5 @@
+#include "kdu_args.h"
+
 /* Specifies the cropping of the input hdf5 file. Currently only 1 plane
  * is specified. Previously we had handled the 3rd dimension with components
  * however this approach is not feasible with the stripe compressor. The reason
@@ -35,8 +37,8 @@ class ska_source_file_base {
      * by the SKA to the destination jpeg2000 file. We also require additional
      * arguments not offered by the Kakadu library so that we can richly encode
      * our images.  */
-    virtual void read_header(jp2_family_tgt &tgt, kdu_args &args);
-    virtual void read_stripe(int height, kdu_int32 *buf);
+    virtual void read_header(jp2_family_tgt &tgt, kdu_args &args, ska_source_file &source_file);
+    virtual void read_stripe(int height, kdu_byte *buf, ska_source_file &source_file);
 };
 
 class ska_source_file {
@@ -51,12 +53,13 @@ class ska_source_file {
       precision=8;
       is_signed=is_raw=swap_bytes=false;
       size=kdu_coords(0,0);
-      next=NULL;
     }
     ~ska_source_file() {
       if (fname != NULL) delete[] fname;
       if (fp != NULL) fclose(fp);
     }
+    void read_header(jp2_family_tgt &tgt, kdu_args &args);
+    void read_stripe(int height, kdu_byte *buf);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
     void parse_ska_args(kdu_args &args);
@@ -70,8 +73,8 @@ class ska_source_file {
     bool is_signed;
     bool is_raw;
     bool swap_bytes; // If raw file word order differs from machine word order
+    bool reversible;
     kdu_coords size; // Width, and remaining rows
-    ska_source_file *next;
 
     int forced_prec;
     cropping crop;

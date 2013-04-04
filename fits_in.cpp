@@ -22,6 +22,7 @@
 // Core includes
 #include "kdu_messaging.h"
 #include "kdu_sample_processing.h"
+#include "kdu_args.h"
 // Image includes
 #include "kdu_image.h"
 #include "image_local_helpers.h"

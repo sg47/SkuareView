@@ -11,14 +11,15 @@
 ENC=skuareview-encode
 DEC=skuareview-decode
 
-COMPILER=g++ -g #-pg
+COMPILER=g++ -g -DSKA#-pg
 
 OBJS=args.o jp2.o
-E_OBJS=$(OBJS) fits_in.o hdf5_in.o kdu_stripe_compressor.o
-D_OBJS=$(OBJS) fits_out.o hdf5_out.o kdu_stripe_decompressor.o
+E_OBJS=$(OBJS) hdf5_in.o kdu_stripe_compressor.o
+#fits_in.o 
+#D_OBJS=$(OBJS) fits_out.o hdf5_out.o kdu_stripe_decompressor.o
 
 # Directory absolute paths
-APPS=/home/speters/kakadu-v7/v7_2-01265L/apps
+APPS=/home/speters/kakadu-v7/v7_2_1-01265L/apps
 COMPRESS=$(APPS)/kdu_buffered_compress/kdu_buffered_compress.cpp
 EXPAND=$(APPS)/kdu_buffered_expand/kdu_buffered_expand.cpp
 SUPPORT=$(APPS)/support
@@ -31,25 +32,26 @@ CASA_LIBS=
 TIFF_LIBS=-ltiff
 LIBS=$(KDU_LIBS) $(FITS_LIB) $(HDF5_LIBS) $(CASA_LIBS) $(TIFF_LIBS)
 
-all: $(ENC) $(DEC)
+all: $(ENC) 
+#$(DEC)
 
 $(ENC): $(COMPRESS) $(E_OBJS)
 	$(COMPILER) $(COMPRESS) -o $(ENC) $(E_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
-$(DEC): $(EXPAND) $(D_OBJS)
-	$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
+#$(DEC): $(EXPAND) $(D_OBJS)
+#$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
 hdf5_in.o: hdf5_in.cpp 
 	$(COMPILER) -c hdf5_in.cpp $(LIBS)
 
-hdf5_out.o: hdf5_out.cpp 
-	$(COMPILER) -c hdf5_out.cpp $(LIBS)
+#hdf5_out.o: hdf5_out.cpp 
+#$(COMPILER) -c hdf5_out.cpp $(LIBS)
 
-fits_in.o: fits_in.cpp 
-	$(COMPILER) -c fits_in.cpp $(LIBS) 
+#fits_in.o: fits_in.cpp 
+#$(COMPILER) -c fits_in.cpp $(LIBS) 
 
-fits_out.o: fits_out.cpp
-	$(COMPILER) -c fits_out.cpp $(LIBS)
+#fits_out.o: fits_out.cpp
+#$(COMPILER) -c fits_out.cpp $(LIBS)
 
 jp2.o: $(APPS)/jp2/jp2.cpp
 	$(COMPILER) -c $(APPS)/jp2/jp2.cpp -o jp2.o
@@ -57,11 +59,11 @@ jp2.o: $(APPS)/jp2/jp2.cpp
 args.o: $(APPS)/args/args.cpp
 	$(COMPILER) -c $(APPS)/args/args.cpp -o args.o
 
-kdu_stripe_decompressor.o: $(SUPPORT)/kdu_stripe_decompressor.cpp
-	$(COMPILE) -c $(SUPPORT)/kdu_stripe_decompressor.cpp -o kdu_stripe_decompressor.o
+#kdu_stripe_decompressor.o: $(SUPPORT)/kdu_stripe_decompressor.cpp
+#$(COMPILE) -c $(SUPPORT)/kdu_stripe_decompressor.cpp -o kdu_stripe_decompressor.o
 
 kdu_stripe_compressor.o: $(SUPPORT)/kdu_stripe_compressor.cpp
-	$(COMPILE) -c $(SUPPORT)/kdu_stripe_compressor.cpp -o kdu_stripe_compressor.o
+	$(COMPILER) -c $(SUPPORT)/kdu_stripe_compressor.cpp -o kdu_stripe_compressor.o
 
 clean:
 	rm -rf *.o skuareview-*

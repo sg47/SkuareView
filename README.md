@@ -34,6 +34,8 @@ find_minmax.c
 # This is currently a very brief instruction on what modificaitons need to be
 # made to the Kakadu Library and Kakadu Apps in order for SkuareView-NGAS-plugin
 # to compile. They assume an understanding of the software.
+   
+# Preferably all these changes should be enclosed in #ifdef SKA
 
 kdu_image.h
     Add another constructor declaration for kdu_image_in that includes a kdu_args parameter.
@@ -43,6 +45,7 @@ image_in.cpp
     Add the definition for the declaration you made in kdu_image.h (identical to the other constructor, except including fits and hdf5).
     Both of the below changes should be contained within and #ifdef statement.
         Add includes for your local image format headers e.g. fits_local.h
+        Add include for kdu_args.h
         Modify kdu_image_in constructor definition to include your image types.
 image_out.cpp
     Same as image_in.cpp 

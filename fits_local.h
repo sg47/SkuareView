@@ -17,6 +17,7 @@
 #include "kdu_file_io.h"
 #include "fitsio.h"
 #include "hdf5.h"
+#include "kdu_args.h"
 
 /**
  * Structure allowing parameters for quality benchmarking to be specified
