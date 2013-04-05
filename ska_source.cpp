@@ -1,3 +1,5 @@
+#include "ska_source.h"
+#include "hdf5_local.h"
 
 /*****************************************************************************/
 /*                      ska_source_file::read_header                         */
@@ -6,15 +8,18 @@
 void
   ska_source_file::read_header(jp2_family_tgt &tgt, kdu_args &args) 
 {
+  parse_ska_args(tgt, args);
   const char *suffix;
   in = NULL;
   if ((suffix = strchr(fname, '.')) != NULL) {
-    if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0))
+    if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0)) {
       in = new hdf5_in();
+      in->read_header(tgt, args, this);
+    }
   }
   if (in == NULL)
   { kdu_error e; e << "Image file, \"" << fname << ", does not have a "
-      "recognized suffix.  Valid suffices are currently: hdf5. Upper or lower "
+      "recognized suffix.  Valid suffices are currently: h5. Upper or lower "
       "case may be used, but must be used consistently."; }
 }
 
@@ -23,7 +28,7 @@ void
 /*****************************************************************************/
 
 void
-  ska_source_file::read_stripe(int height, kdu_int32 *buf)
+  ska_source_file::read_stripe(int height, kdu_byte *buf)
 {
   // "this" is passed as a method of mimicing inheritance
   // the reason why have to do it this way is because "kdu_buffered_compress"
@@ -38,7 +43,7 @@ void
 /*****************************************************************************/
 
 void
-  ska_source_file::parse_ska_args(kdu_args &args)
+  ska_source_file::parse_ska_args(jp2_family_tgt &tgt, kdu_args &args)
 {
   if (args.get_first() != NULL) {
 
@@ -60,9 +65,9 @@ void
             (*(++field_sep) == '\0'))
           field_sep = NULL;
         if ((sscanf(string,"{%d,%d,%d,%d,%d}", &(crop.x), &(crop.y), &(crop.z),
-                &(crop.width, &(crop.height) != 5) ||
+                &(crop.width), &(crop.height)) != 5) ||
                 crop.x < 0 || crop.y < 0 || crop.z < 0 ||
-                crop.width <= 0 || crop.height <= 0)))
+                crop.width <= 0 || crop.height <= 0)
         { kdu_error e; e << "\"-icrop\" argument contains malformed "
           "cropping specification.  Expected to find five comma-separated "
             "integers, enclosed by curly braces.  The first three (x, y and z "
@@ -145,23 +150,20 @@ void
   kdu_byte* contents = (kdu_byte*) malloc (BUFSIZ); // Should be plenty
   int contents_idx = 0, len = 0;
   char* tmp = (char*) malloc (sizeof(char) * 128);
-  sprintf(tmp, "minfloat:%f,", float_minvals);
+  len = sprintf(tmp, "minfloat:%f,", float_minvals);
   for (int i = 0; i < len; ++i, ++contents_idx)
     contents[contents_idx] = tmp[i];
-  sprintf(tmp, "maxfloat:%f,", float_maxvals);
+  len = sprintf(tmp, "maxfloat:%f,", float_maxvals);
   for (int i = 0; i < len; ++i, ++contents_idx)
     contents[contents_idx] = tmp[i];
-  sprintf(tmp, "plane:%d,", h5_param.start_frame);
-  int len = --contents_idx;
+  len = --contents_idx;
 
-  jp2_output_box *out = jp2_output_box();
-  out.open(tgt, out.get_box_type()); 
+  jp2_output_box out = jp2_output_box();
+  out.open(&tgt, out.get_box_type(), false, false); 
   out.set_target_size(16 + len);
   out.write(h5_uuid, 16); // unique identifier
   out.write(contents, len);
   if (!out.close())
   { kdu_error e; e << "Could not flush box to header."; }
   free(contents);
-
-  return true;
 }

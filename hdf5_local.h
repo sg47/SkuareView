@@ -61,7 +61,6 @@
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
 #include <fstream>
 #include "kdu_elementary.h"
-#include "kdu_image.h"
 #include "kdu_file_io.h"
 #include "hdf5.h"
 #include "ska_source.h"
@@ -88,9 +87,8 @@ class hdf5_in : public ska_source_file_base {
 public: // Member functions
   ~hdf5_in();
   void read_header(jp2_family_tgt &tgt, kdu_args &args, 
-      ska_source_file &source_file);
-  void read_stripe(int height, kdu_byte *buf,
-      ska_source_file &source_file);
+      ska_source_file * const source_file);
+  void read_stripe(int height, kdu_byte *buf, ska_source_file * const source_file);
 private: // Members describing the organization of the HDF5 data
   hid_t file; // File handle for the HDF5 handle
   hid_t dataset;

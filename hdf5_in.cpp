@@ -173,7 +173,7 @@ static void
 
 void
   hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
-    ska_source_file &source_file)
+    ska_source_file * const source_file)
 {
   // Initialize the state incase we need to cleanup prematurely
   num_unread_rows = 0;
@@ -184,7 +184,7 @@ void
   { kdu_error e; e << "Unable to parse HDF5 parameters"; }
 
   // Open the file
-  file = H5Fopen(source_file.fname, H5F_ACC_RDONLY, H5P_DEFAULT);
+  file = H5Fopen(source_file->fname, H5F_ACC_RDONLY, H5P_DEFAULT);
   if (file < 0) 
   { kdu_error e; e << "Unable to open input HDF5 file."; }
 
@@ -215,36 +215,36 @@ void
     "file."; }
 
     // Identify if the data is signed
-    source_file.is_signed = true; // floats are always signed
+    source_file->is_signed = true; // floats are always signed
     if (cinfo.t_class != H5T_FLOAT) { // TODO: When implement support for further
       // classes. This will be extended.
       int is_signed_h5 = H5Tget_sign(datatype);
       if (is_signed_h5 == H5T_SGN_2)
-        source_file.is_signed = true;
+        source_file->is_signed = true;
       else if (is_signed_h5 == H5T_SGN_NONE)
-        source_file.is_signed = false;
+        source_file->is_signed = false;
       else
       { kdu_error e; e << "Unable to identify is data is signed."; }
     }
 
     // Get the number of bytes that represent each sample
-    source_file.bytes_per_sample = H5Tget_size(datatype); 
-    if (source_file.bytes_per_sample == 0) 
+    source_file->bytes_per_sample = H5Tget_size(datatype); 
+    if (source_file->bytes_per_sample == 0) 
     { kdu_error e; e << "Unable to get sample bytes of dataset in HDF5 "
       "file."; }
 
       // Get the number of bits that represent each sample
-      source_file.precision = H5Tget_precision(datatype);
-      if (source_file.precision == 0) 
+      source_file->precision = H5Tget_precision(datatype);
+      if (source_file->precision == 0) 
       { kdu_error e; e << "Unable to get precision of dataset in HDF5 file."; }
-      else if (source_file.precision != 8 * source_file.bytes_per_sample)
+      else if (source_file->precision != 8 * source_file->bytes_per_sample)
       { kdu_error e; e << "Padding in sample bytes. Handling for this is "
         "unimplemented"; } 
 
         // Check for forced precision
-        if (source_file.forced_prec > 0) {
-          source_file.precision = source_file.forced_prec;
-          source_file.bytes_per_sample = source_file.precision / 8;
+        if (source_file->forced_prec > 0) {
+          source_file->precision = source_file->forced_prec;
+          source_file->bytes_per_sample = source_file->precision / 8;
         }
 
         // Get the dataspace of the the dataset
@@ -284,18 +284,18 @@ void
               // Extent of each dimension of the cube to be encoded
               extent = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
 
-              if (source_file.crop.specified) {
-                if ((source_file.crop.x + source_file.crop.width) > cinfo.width)
+              if (source_file->crop.specified) {
+                if ((source_file->crop.x + source_file->crop.width) > cinfo.width)
                 { kdu_error e; e << "Requested input file cropping parameters are "
                   "not compatible with actual image dimensions.  The cropping "
                     "region would cross the right hand boundary of the image."; }
-                  if ((source_file.crop.y + source_file.crop.height) > cinfo.height)
+                  if ((source_file->crop.y + source_file->crop.height) > cinfo.height)
                   { kdu_error e; e << "Requested input file cropping parameters are "
                     "not compatible with actual image dimensions. The cropping "
                       "region would cross the the lower hand boundary of the image."; }
-                    offset[0] = source_file.crop.x; extent[0] = source_file.crop.width;         
-                    offset[1] = source_file.crop.y; extent[1] = source_file.crop.height;
-                    offset[2] = source_file.crop.z; extent[2] = 1;
+                    offset[0] = source_file->crop.x; extent[0] = source_file->crop.width;         
+                    offset[1] = source_file->crop.y; extent[1] = source_file->crop.height;
+                    offset[2] = source_file->crop.z; extent[2] = 1;
               }
               else { // No cropping specified, default is the whole image
                 offset[0] = offset[1] = offset[2] = 0;
@@ -373,12 +373,12 @@ hdf5_in::~hdf5_in()
 
 void
   hdf5_in::read_stripe(int height, kdu_byte *buf,
-    ska_source_file &source_file)
+    ska_source_file * const source_file)
 /* Reads in a stripe from the image and places it into buf. We make the rather
  * dangerous assumption that the stripe height provided will never exceed the
  * bounds of the image from our current index in the cube. */
 {
-  int width = source_file.crop.width; // Number of samples in the line
+  int width = source_file->crop.width; // Number of samples in the line
   dims_mem[1] = height;
 
   // We select the hyperslab (cropped image cube) that will be encoded
@@ -403,15 +403,15 @@ void
               H5P_DEFAULT, buf_in) < 0)
         { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
 
-        if (source_file.reversible)
-          convert_TFLOAT_to_ints(buf_in, buf, width, source_file.precision, 
-              true, source_file.float_minvals, source_file.float_maxvals, 
-              source_file.bytes_per_sample, 
-              source_file.raw_before, source_file.raw_after);
+        if (source_file->reversible)
+          convert_TFLOAT_to_ints(buf_in, buf, width, source_file->precision, 
+              true, source_file->float_minvals, source_file->float_maxvals, 
+              source_file->bytes_per_sample, 
+              source_file->raw_before, source_file->raw_after);
         else
-          convert_TFLOAT_to_floats(buf_in, buf, width, source_file.is_signed, 
-              source_file.float_minvals, source_file.float_maxvals, 
-              source_file.raw_before, source_file.raw_after);
+          convert_TFLOAT_to_floats(buf_in, buf, width, source_file->is_signed, 
+              source_file->float_minvals, source_file->float_maxvals, 
+              source_file->raw_before, source_file->raw_after);
         free(buf_in);
         break;
       }
@@ -428,4 +428,15 @@ void
     else 
       offset_out[1] += height; // otherwise just go to next row
     num_unread_rows -= height;
+}
+
+/*****************************************************************************/
+/*                       hdf5_in::parse_hdf5_parameters                      */
+/*****************************************************************************/
+
+bool
+  hdf5_in::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
+{
+  // currently no hdf5 specific parameters being parsed
+  return true;
 }

@@ -11,17 +11,16 @@
 ENC=skuareview-encode
 DEC=skuareview-decode
 
-COMPILER=g++ -g -DSKA#-pg
+COMPILER=g++ -g -DSKA
 
 OBJS=args.o jp2.o
-E_OBJS=$(OBJS) hdf5_in.o kdu_stripe_compressor.o
-#fits_in.o 
+E_OBJS=$(OBJS) hdf5_in.o kdu_stripe_compressor.o ska_source.o
 #D_OBJS=$(OBJS) fits_out.o hdf5_out.o kdu_stripe_decompressor.o
 
 # Directory absolute paths
 APPS=/home/speters/kakadu-v7/v7_2_1-01265L/apps
-COMPRESS=$(APPS)/kdu_buffered_compress/kdu_buffered_compress.cpp
-EXPAND=$(APPS)/kdu_buffered_expand/kdu_buffered_expand.cpp
+COMPRESS=kakadu_apps/kdu_buffered_compress.cpp
+EXPAND=kakadu_apps/kdu_buffered_expand.cpp
 SUPPORT=$(APPS)/support
 
 # Libraries
@@ -36,13 +35,16 @@ all: $(ENC)
 #$(DEC)
 
 $(ENC): $(COMPRESS) $(E_OBJS)
-	$(COMPILER) $(COMPRESS) -o $(ENC) $(E_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
+	$(COMPILER) $(COMPRESS) -o $(ENC) $(E_OBJS) $(LIBS)
 
 #$(DEC): $(EXPAND) $(D_OBJS)
 #$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
+ska_source.o: ska_source.cpp
+	$(COMPILER) -c ska_source.cpp $(LIBS) -o ska_source.o
+
 hdf5_in.o: hdf5_in.cpp 
-	$(COMPILER) -c hdf5_in.cpp $(LIBS)
+	$(COMPILER) -c hdf5_in.cpp $(LIBS) -o hdf5_in.o
 
 #hdf5_out.o: hdf5_out.cpp 
 #$(COMPILER) -c hdf5_out.cpp $(LIBS)
@@ -60,7 +62,7 @@ args.o: $(APPS)/args/args.cpp
 	$(COMPILER) -c $(APPS)/args/args.cpp -o args.o
 
 #kdu_stripe_decompressor.o: $(SUPPORT)/kdu_stripe_decompressor.cpp
-#$(COMPILE) -c $(SUPPORT)/kdu_stripe_decompressor.cpp -o kdu_stripe_decompressor.o
+#$(COMPILER) -c $(SUPPORT)/kdu_stripe_decompressor.cpp -o kdu_stripe_decompressor.o
 
 kdu_stripe_compressor.o: $(SUPPORT)/kdu_stripe_compressor.cpp
 	$(COMPILER) -c $(SUPPORT)/kdu_stripe_compressor.cpp -o kdu_stripe_compressor.o

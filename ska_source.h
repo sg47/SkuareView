@@ -1,4 +1,10 @@
+#ifndef SKA_SOURCE_H
+#define SKA_SOURCE_H
+
+#include <fstream>
 #include "kdu_args.h"
+#include "jp2.h"
+
 
 /* Specifies the cropping of the input hdf5 file. Currently only 1 plane
  * is specified. Previously we had handled the 3rd dimension with components
@@ -13,16 +19,10 @@ struct cropping {
   int z; // Selection plane of the hdf5 cube
   int height;
   int width;
-  cropping ();
-  cropping (int x_in, int y_in, int z_in, int height_in, int width_in, 
-      bool specified_in=false) {
-    specified=specified_in;
-    x=x_in; y=y_in; z=z_in;
-    height=height_in; width=width_in;
-  }
 };
 
 class ska_source_file;
+class ska_source_file_base;
 
 /*****************************************************************************/
 /*                         class ska_source_file                             */
@@ -37,8 +37,8 @@ class ska_source_file_base {
      * by the SKA to the destination jpeg2000 file. We also require additional
      * arguments not offered by the Kakadu library so that we can richly encode
      * our images.  */
-    virtual void read_header(jp2_family_tgt &tgt, kdu_args &args, ska_source_file &source_file);
-    virtual void read_stripe(int height, kdu_byte *buf, ska_source_file &source_file);
+    virtual void read_header(jp2_family_tgt &tgt, kdu_args &args, ska_source_file * const source_file) = 0;
+    virtual void read_stripe(int height, kdu_byte *buf, ska_source_file * const source_file) = 0;
 };
 
 class ska_source_file {
@@ -53,6 +53,7 @@ class ska_source_file {
       precision=8;
       is_signed=is_raw=swap_bytes=false;
       size=kdu_coords(0,0);
+      next=NULL;
     }
     ~ska_source_file() {
       if (fname != NULL) delete[] fname;
@@ -62,7 +63,7 @@ class ska_source_file {
     void read_stripe(int height, kdu_byte *buf);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
-    void parse_ska_args(kdu_args &args);
+    void parse_ska_args(jp2_family_tgt &tgt, kdu_args &args);
   private: // Private data
     class ska_source_file_base *in;
   public: // Data
@@ -86,4 +87,11 @@ class ska_source_file {
     std::ofstream raw_before, raw_after;
     float float_minvals; // Minimum float in input file
     float float_maxvals;
+
+    //TODO
+    /* While multiple files can be accepted as arguments, currently the
+     * implementation only processes the first. */
+    ska_source_file *next;
 };
+
+#endif

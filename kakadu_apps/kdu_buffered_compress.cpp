@@ -63,6 +63,8 @@ Description:
 #include "kdu_args.h"
 #include "kdu_file_io.h"
 #include "jp2.h"
+// SKA includes
+#include "../ska_source.h"
 
 /* ========================================================================= */
 /*                         Set up messaging services                         */
@@ -509,7 +511,7 @@ static void
 /* STATIC                     parse_simple_args                              */
 /*****************************************************************************/
 
-static kd_source_file *
+static ska_source_file*
   parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
                     float &min_rate, double &rate_tolerance,
                     int &preferred_min_stripe_height,
@@ -536,7 +538,7 @@ static kd_source_file *
   double_buffering_height = 0; // i.e., no double buffering
   cpu = false;
   bool little_endian = false;
-  kd_source_file *fhead=NULL, *ftail=NULL;
+  ska_source_file *fhead=NULL, *ftail=NULL;
 
   if (args.find("-o") != NULL)
     {
@@ -672,7 +674,7 @@ static kd_source_file *
         {
           while (*string == ',') string++;
           for (delim=string; (*delim != '\0') && (*delim != ','); delim++);
-          kd_source_file *file = new kd_source_file;
+          ska_source_file *file = new ska_source_file;
           if (ftail == NULL)
             fhead = ftail = file;
           else
@@ -756,7 +758,7 @@ int main(int argc, char *argv[])
   int preferred_min_stripe_height, absolute_max_stripe_height;
   int num_threads, env_dbuf_height, flush_period;
   bool cpu;
-  kd_source_file *in_files =
+  ska_source_file *in_files =
     parse_simple_args(args,ofname,max_rate,min_rate,rate_tolerance,
                       preferred_min_stripe_height,
                       absolute_max_stripe_height,flush_period,
@@ -820,7 +822,7 @@ int main(int argc, char *argv[])
   int m_components=0;  siz.get(Mcomponents,0,0,m_components);
   kdu_long total_samples=0, total_pixels=0;
   int n, num_components=0;
-  kd_source_file *in;
+  ska_source_file *in;
   for (in=in_files; in != NULL; in=in->next, num_components++)
     {
       if (in->is_raw)
@@ -842,7 +844,7 @@ int main(int argc, char *argv[])
         }
       else
         { // In this case, the image dimensions are known from the header
-          in->read_pgm_header();
+          in->read_header(jp2_ultimate_tgt, args); // SKA EDIT
           siz.set(Sdims,num_components,0,in->size.y);
           siz.set(Sdims,num_components,1,in->size.x);
           if (m_components > 0)
@@ -960,7 +962,7 @@ int main(int argc, char *argv[])
   int *precisions = new int[num_components];
   int *stripe_heights = new int[num_components];
   int *max_stripe_heights = new int[num_components];
-  kdu_int16 **stripe_bufs = new kdu_int16 *[num_components];
+  kdu_byte **stripe_bufs = new kdu_byte *[num_components];
                 // Note: we will be using 16-bit stripe buffers throughout for
                 // this demonstration, but you can supply 8-bit stripe buffers
                 // to `kdu_stripe_compressor::push_stripe' if you prefer.
@@ -972,7 +974,7 @@ int main(int argc, char *argv[])
                                             absolute_max_stripe_height,
                                             stripe_heights,max_stripe_heights);
   for (in=in_files, n=0; n < num_components; n++, in=in->next)
-    if ((stripe_bufs[n]=new kdu_int16[in->size.x*max_stripe_heights[n]])==NULL)
+    if ((stripe_bufs[n]=new kdu_byte[in->size.x*max_stripe_heights[n]])==NULL)
       { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
     else
       precisions[n] = in->precision;
@@ -992,7 +994,7 @@ int main(int argc, char *argv[])
       if (cpu)
         reading_time += timer.get_ellapsed_seconds();
     } while (compressor.push_stripe(stripe_bufs,stripe_heights,NULL,NULL,
-                                    precisions,NULL,flush_period));
+                                    precisions,flush_period));
   if (cpu)
     { // Report processing time
       processing_time += timer.get_ellapsed_seconds();
