@@ -165,7 +165,7 @@ typedef struct {
  * Structure for defining essential properties of a FITS datacube.
  */
 typedef struct {
-  int type;
+    int type;
 	long width; // Image width
 	long height; // Image height
 	LONGLONG depth; // Image depth.  Arbitrary for 2D images
