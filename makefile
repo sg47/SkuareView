@@ -14,7 +14,7 @@ DEC=skuareview-decode
 
 COMPILER=g++ -g -DSKA
 
-OBJS=args.o jp2.o 
+OBJS=args.o jp2.o sample_converter.o
 E_OBJS=ska_source.o fits_in.o hdf5_in.o kdu_stripe_compressor.o $(OBJS)
 D_OBJS=ska_dest.o fits_out.o hdf5_out.o kdu_stripe_decompressor.o $(OBJS)
 
@@ -69,6 +69,9 @@ kdu_stripe_decompressor.o: $(SUPPORT)/kdu_stripe_decompressor.cpp
 
 kdu_stripe_compressor.o: $(SUPPORT)/kdu_stripe_compressor.cpp
 	$(COMPILER) -c $(SUPPORT)/kdu_stripe_compressor.cpp -o kdu_stripe_compressor.o
+
+sample_converter.o: sample_converter.cpp
+	$(COMPILER) -c sample_converter.cpp -o sample_converter.o
 
 clean:
 	rm -rf *.o skuareview-*

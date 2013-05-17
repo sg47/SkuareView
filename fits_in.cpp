@@ -25,13 +25,13 @@
 #include "kdu_args.h"
 // Image includes
 #include "kdu_image.h"
-#include "image_local_helpers.h"
 // IO includes
 #include "kdu_file_io.h"
 #include "image_local.h"
-#include "fits_local.h"
-// fits includes
+// FITS includes
 #include "fitsio.h"
+#include "fits_local.h"
+#include "sample_converter.h"
 
 /*****************************************************************************/
 /* STATIC                  convert_TFLOAT_to_floats                          */

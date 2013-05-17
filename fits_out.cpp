@@ -3,7 +3,7 @@
 //  @file: fits_out.cpp
 //  Project: SkuareView-NGAS-plugin
 //
-//  @author Slava Kitaeff
+//  @author Sean Peters
 //  @date 29/07/12.
 //  @brief Implements file writing to the FITS file format, provides support
 //         up to 4 dimensions and is readily extendible to include further
@@ -32,15 +32,17 @@
 /* ========================================================================= */
 
 /*****************************************************************************/
-/*                             fits_out::fits_out                            */
+/*                           fits_out::write_header                          */
 /*****************************************************************************/
 
-fits_out::fits_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
-    bool quiet)
+void
+fits_out::write_header(jp2_family_tgt &tgt, kdu_args &args, 
+    ska_dest_file* const dest_file)
 {
+  kdu_error e;
   // Initialize state information in case we have to clean up prematurely
-  orig_precision = NULL;
-  is_signed = NULL;
+  dest_file->is_signed = NULL;
+  dest_file->orig_precision = NULL;
   incomplete_lines = NULL;
   free_lines = NULL;
   num_unwritten_rows = 0;
@@ -52,19 +54,19 @@ fits_out::fits_out(const char *fname, kdu_image_dims &dims, int &next_comp_idx,
   first_comp_idx = next_comp_idx;
   num_components = dims.get_num_components() - first_comp_idx;
   if (num_components <= 0)
-  { kdu_error e; e << "Output image files require more image components "
-    "(or mapped colour channels) than are available!"; }
+    e << "Output image files require more image components "
+      "(or mapped colour channels) than are available!"; 
 
-    cinfo.bitpix = FLOAT_IMG;
-    cinfo.naxis = 2;
-    if (num_components > 1)
-      cinfo.naxis++;
+  cinfo.bitpix = FLOAT_IMG;
+  cinfo.naxis = 2;
+  if (num_components > 1)
+    cinfo.naxis++;
 
-    // Create destination FITS file
-    fits_create_file(&out, fname, &status);
+  // Create destination FITS file
+  fits_create_file(&out, fname, &status);
 
-    int* naxes = (int*) malloc(sizeof(int) * cinfo.naxis);
-    fits_create_img(&out, cinfo.bitpix, cinfo.naxis, naxes, &status);
+  int* naxes = (int*) malloc(sizeof(int) * cinfo.naxis);
+  fits_create_img(&out, cinfo.bitpix, cinfo.naxis, naxes, &status);
 }
 
 /*****************************************************************************/
@@ -89,7 +91,8 @@ fits_out::~fits_out()
 /*****************************************************************************/
 
 void
-fits_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
+fits_out::write_stripe(int height, kdu_byte* buf, 
+    ska_dest_file* const dest_file)
 {
   int width = line.get_width();
   float *buffer =(float*) malloc(sizeof(float)*width);
@@ -224,5 +227,3 @@ fits_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
 
   return true;
 }
-
-

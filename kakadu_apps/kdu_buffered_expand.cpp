@@ -88,76 +88,6 @@ static kdu_stream_message cerr_message(&std::cerr);
 static kdu_message_formatter pretty_cout(&cout_message);
 static kdu_message_formatter pretty_cerr(&cerr_message);
 
-
-/* ========================================================================= */
-/*                               kd_output _file                             */
-/* ========================================================================= */
-
-struct kd_output_file {
-  public: // Lifecycle functions
-    kd_output_file()
-      { fname=NULL; fp=NULL; bytes_per_sample=1; precision=8;
-        is_signed=is_raw=swap_bytes=false; size=kdu_coords(0,0); next=NULL; }
-    ~kd_output_file()
-      { if (fname != NULL) delete[] fname;
-        if (fp != NULL) fclose(fp); }
-    void write_pgm_header();
-    void write_stripe(int height, kdu_int16 *buf);
-  public: // Data
-    char *fname;
-    FILE *fp;
-    int bytes_per_sample;
-    int precision; // Num bits
-    bool is_signed;
-    bool is_raw;
-    bool swap_bytes; // If raw file word order differs from machine word order
-    kdu_coords size; // Width, and remaining rows
-    kd_output_file *next;
-  };
-
-/*****************************************************************************/
-/*                       kd_output_file::write_pgm_header                    */
-/*****************************************************************************/
-
-void
-  kd_output_file::write_pgm_header()
-{
-  fprintf(fp,"P5\n%d %d\n255\n",size.x,size.y);
-}
-
-/*****************************************************************************/
-/*                         kd_output_file::write_stripe                      */
-/*****************************************************************************/
-
-void
-  kd_output_file::write_stripe(int height, kdu_int16 *buf)
-{
-  int n, num_samples = height*size.x;
-  int num_bytes = num_samples * bytes_per_sample;
-  if (num_samples <= 0) return;
-  kdu_int16 val, off = (is_signed)?0:((1<<precision)>>1);
-  kdu_int16 *sp = buf;
-  if (bytes_per_sample == 1)
-    { // Reduce to an 8-bit unsigned representation
-      kdu_byte *dp=(kdu_byte *) buf;
-      for (n=num_samples; n > 0; n--)
-        *(dp++) = (kdu_byte)(*(sp++) + off);
-    }
-  else if (swap_bytes)
-    { // Swap byte order and make representation unsigned if necessary
-      for (n=num_samples; n > 0; n--)
-        { val = *sp+off; val = (val<<8) + ((val>>8)&0x00FF); *(sp++) = val; }
-    }
-  else if (off != 0)
-    { // Make representation unsigned
-      for (n=num_samples; n > 0; n--)
-        { val = *sp+off; *(sp++) = val; }
-    }
-  if (fwrite(buf,1,num_bytes,fp) != (size_t) num_bytes)
-    { kdu_error e; e << "Unable to write to file \"" << fname << "\"."; }
-}
-
-
 /* ========================================================================= */
 /*                            Internal Functions                             */
 /* ========================================================================= */
@@ -388,8 +318,8 @@ static void
 /* STATIC                     parse_simple_args                              */
 /*****************************************************************************/
 
-static kd_output_file *
-  parse_simple_args(kdu_args &args, char * &ifname, float &max_bpp,
+static ska_dest_files *
+  parse_simple_args(kdu_args &args, char* &ifname, float &max_bpp,
                     bool &simulate_parsing, int &skip_components,
                     int &max_layers, int &discard_levels,
                     kdu_dims &region, int &preferred_min_stripe_height,
@@ -422,8 +352,7 @@ static kd_output_file *
   num_threads = 0; // This is not actually the default -- see below.
   double_buffering_height = 0; // i.e., no double buffering
   cpu = false;
-  bool little_endian = false;
-  kd_output_file *fhead=NULL, *ftail=NULL;
+  ska_dest_file *fhead, *ftail;
 
   if (args.find("-i") != NULL)
     {
@@ -476,21 +405,6 @@ static kd_output_file *
           (discard_levels < 0))
         { kdu_error e; e << "\"-reduce\" argument requires a non-negative "
           "integer parameter!"; }
-      args.advance();
-    }
-  if (args.find("-int_region") != NULL)
-    {
-      const char *string = args.advance();
-      if ((string == NULL) ||
-          (sscanf(string,"{%d,%d},{%d,%d}",
-                  &region.pos.y,&region.pos.x,&region.size.y,&region.size.x)
-           != 4) ||
-          (region.pos.x < 0) || (region.pos.y < 0) ||
-          (region.size.x <= 0) || (region.size.y <= 0))
-        { kdu_error e; e << "\"-int_region\" argument requires a set of four "
-          "coordinates of the form, \"{<top>,<left>},{<height>,<width>}\", "
-          "where `top' and `left' must be non-negative integers, and "
-          "`height' and `width' must be positive integers."; }
       args.advance();
     }
   if (args.find("-little_endian") != NULL)
@@ -565,7 +479,7 @@ static kd_output_file *
         {
           while (*string == ',') string++;
           for (delim=string; (*delim != '\0') && (*delim != ','); delim++);
-          kd_output_file *file = new kd_output_file;
+          ska_dest_file *file = new ska_dest_file;
           if (ftail == NULL)
             fhead = ftail = file;
           else
@@ -580,23 +494,6 @@ static kd_output_file *
       args.advance();
     }
 
-  // Go through file list, setting `is_raw' and `swap_bytes'
-  for (ftail=fhead; ftail != NULL; ftail=ftail->next)
-    {
-      ftail->is_raw = ftail->swap_bytes = false;
-      const char *delim = strrchr(ftail->fname,'.');
-      if ((delim == NULL) || (toupper(delim[1]) != (int) 'P') ||
-          (toupper(delim[2]) != (int) 'G') || (toupper(delim[3]) != (int) 'M'))
-        {
-          ftail->is_raw = true;
-          int is_bigendian=1;
-          ((kdu_byte *) &is_bigendian)[0] = 0;
-          if (is_bigendian)
-            ftail->swap_bytes = little_endian;
-          else
-            ftail->swap_bytes = !little_endian;
-        }
-    }
   return fhead;
 }
 
@@ -661,7 +558,6 @@ int main(int argc, char *argv[])
   kdu_args args(argc,argv,"-s");
 
   // Parse simple arguments from command line
-
   
   char *ifname;
   float max_bpp;
@@ -670,7 +566,7 @@ int main(int argc, char *argv[])
   kdu_dims region;
   int num_threads, env_dbuf_height;
   bool simulate_parsing, cpu;
-  kd_output_file *out_files =
+  ska_dest_file *out_files =
     parse_simple_args(args,ifname,max_bpp,simulate_parsing,skip_components,
                       max_layers,discard_levels,
                       region,preferred_min_stripe_height,
@@ -742,7 +638,7 @@ int main(int argc, char *argv[])
     codestream.get_dims(n,comp_dims[n],true);
 
   // Next, prepare the output files
-  kd_output_file *out;
+  ska_dest_files *out;
   if (out_files != NULL)
     {
       for (n=0, out=out_files; out != NULL; out=out->next, n++)
@@ -750,22 +646,9 @@ int main(int argc, char *argv[])
           if (n >= num_components)
             { kdu_error e; e << "You have supplied more output files than "
               "there are image components to decompress!"; }
-          out->size = comp_dims[n].size;
-          if (out->is_raw)
-            { // Try to preserve all the original precision and signed/unsigned
-              // properties for raw files.
               out->precision = codestream.get_bit_depth(n,true);
               out->is_signed = codestream.get_signed(n,true);
-              assert(out->precision > 0);
-              if (out->precision > 16)
-                out->precision = 16; // Can't store more than 16 bits/sample
-              out->bytes_per_sample = (out->precision > 8)?2:1;
-            }
-          else
-            { // PGM files always have an 8-bit unsigned representation
-              out->precision = 8; out->is_signed = false;
-              out->bytes_per_sample = 1;
-              out->write_pgm_header();
+              out->write_header();
             }
         }
       if (n < num_components)
@@ -834,7 +717,7 @@ int main(int argc, char *argv[])
       { kdu_error e;
         e << "Insufficient memory to allocate stripe buffers."; }
   if (out_files != NULL)
-    { // Otherwise, represent all samples with 16-bit precision
+    { 
       precisions = new int[num_components];
       for (out=out_files, n=0; n < num_components; n++, out=out->next)
         precisions[n] = out->precision;

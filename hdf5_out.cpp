@@ -218,25 +218,19 @@ void
 hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
     ska_dest_file* const dest_file)
 {
-  // Iinitialize state information in case we have to clean up prematurely
-  orig_precision = NULL;
-  is_signed = NULL;
-  incomplete_lines = NULL;
-  free_lines = NULL;
+  kdu_error e;
+  kdu_warning w;
   num_unwritten_rows = 0;
-  initial_non_empty_tiles = 0;
   
-  //Used as a value that flags, nothing in metadata
-  float_minvals = float_maxvals = -11024; 
-  domain=2; // Linear by default
-
-  if (!parse_hdf5_parameters(args, dims)) 
-  { kdu_error e; e << "Unable to parse HDF5 parameters"; }
-
-  /* Retrieve and use variables related to the input JPX image */
+  // default min and max
+  dest_file->samples_min = -0.5;
+  dest_file->samples_max = 0.5;
 
   // Parse hdf5 specific metadata within the JPX file.
   parse_hdf5_metadata(dims, quiet);
+
+  if (!parse_hdf5_parameters(args, dims)) 
+  { kdu_error e; e << "Unable to parse HDF5 parameters"; }
 
   // Find max image components
   first_comp_idx = next_comp_idx;
@@ -508,39 +502,10 @@ hdf5_out::write_stripe(int height, kdu_byte *buf,
 bool 
 hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args) 
 {
+  kdu_error e;
   const char* string;
 
   if (args.get_first() != NULL) {
-    /* Ouput the values decoded before and after renormalization to a raw
-     * data file for testing analysis*/
-    if (args.find("-rawtest") != NULL)
-    {
-      /* raw data values before they are normalized for the JPX image. These
-       * can be compared against decoder_after_raw, to see how the precision
-       * of the values compared after they have been renormalized back to
-       * they're origional values. */
-      raw_before.open("decoder_before_rawtest");
-
-      /* raw data values after they are normalized for the JPX image. These
-       * can be compared against the decoder_before_raw, to see how the 
-       * precision of the values is affected by the internal Kakadu compressor
-       * exclusively. */
-      raw_after.open("decoder_after_rawtest");
-      args.advance();
-    }
-
-    if (args.find("-domain") != NULL)
-    {
-      const char *string = args.advance();
-      if (strcmp(string, "log") == 0)
-        domain=0;
-      else if (strcmp(string, "sqrt") == 0)
-        domain=1;
-      else
-        domain=2; // linear
-      args.advance();
-    }
-
     if (args.find("-minmax") != NULL)
     {
       for (int i = 0; i < 2; ++i) {
@@ -551,17 +516,17 @@ hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
                 string[j] == '.' || string[j] == '-'))
             succ = false;
         }
-        if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
+        if (!succ || (i == 0 && (sscanf(string, "%f", &samples_min) != 1)))
           succ = false;
         else if (!succ || (i == 1 && 
-              (sscanf(string, "%f", &float_maxvals) != 1)))
+              (sscanf(string, "%f", &samples_max) != 1)))
           succ = false;
 
         if (!succ)
-        { kdu_error e; e << "\"-minmax\" argument contains "
-          "malformed specification. Expected to find two comma-"
-            "separated float numbers, enclosed by curly braces. "
-            "Example: -minmax {-1.0,1.0}"; }
+         e << "\"-minmax\" argument contains "
+          "malformed specification. Expected to find two comma-" 
+          "separated float numbers, enclosed by curly braces. "
+          "Example: -minmax {-1.0,1.0}";
       }
       args.advance();
     }
@@ -569,8 +534,8 @@ hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
       kdu_warning w; w << "Using default float max/min values (%f, %f). "
         "Distortion is likely to occur, it is recommended to rather specify"
         " these values using the \"-minmax\" argument";
-      float_minvals = H5_FLOAT_MIN;
-      float_maxvals = H5_FLOAT_MAX;
+      samples_min = H5_FLOAT_MIN;
+      samples_max = H5_FLOAT_MAX;
     }
 
   }
@@ -645,10 +610,6 @@ hdf5_out::parse_hdf5_metadata(jp2_family_tgt &tgt, bool quiet)
               float_maxvals << " (chosen from "
               "metadata)" << std::endl;
           }
-          // Much of the metadata may never be used in encoding
-          // or decoding, but helps just to describe context 
-          // specific information on where images may have come
-          // from.
         }
       }
 
