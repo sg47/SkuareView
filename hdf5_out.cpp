@@ -71,13 +71,14 @@
 // Image includes
 #include "kdu_image.h"
 #include "image_local.h"
+// HDF5 includes
 #include "hdf5_local.h"
 
 /*****************************************************************************/
 /* STATIC                   convert_floats_to_TFLOAT                         */
 /*****************************************************************************/
 
-  static void
+static void
 convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num, 
     double minval, double maxval, short domain, 
     std::ofstream& before, std::ofstream& after)
@@ -136,7 +137,7 @@ convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num,
 /* STATIC                    convert_ints_to_TFLOAT                          */
 /*****************************************************************************/
 
-  static void
+static void
 convert_ints_to_TFLOAT(kdu_line_buf &line, float *dest, int num, 
     int precision, double minval, double maxval,
     std::ofstream& before, std::ofstream& after)
@@ -187,7 +188,7 @@ convert_ints_to_TFLOAT(kdu_line_buf &line, float *dest, int num,
 /* STATIC                         str_split                                  */
 /*****************************************************************************/
 
-  static std::vector<std::string> 
+static std::vector<std::string> 
 &str_split(const std::string &s, char delim, std::vector<std::string> &elems) 
 {
   std::stringstream ss(s);
@@ -198,7 +199,7 @@ convert_ints_to_TFLOAT(kdu_line_buf &line, float *dest, int num,
   return elems;
 }
 
-  static std::vector<std::string> 
+static std::vector<std::string> 
 str_split(const std::string &s, char delim) 
 {
   std::vector<std::string> elems;
@@ -210,11 +211,12 @@ str_split(const std::string &s, char delim)
 /* ========================================================================= */
 
 /*****************************************************************************/
-/*                             hdf5_out::hdf5_out                            */
+/*                           hdf5_out::read_header                           */
 /*****************************************************************************/
 
-hdf5_out::hdf5_out(const char *fname, kdu_args& args, kdu_image_dims &dims, int &next_comp_idx,
-    bool quiet)
+void
+hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
+    ska_dest_file* const dest_file)
 {
   // Iinitialize state information in case we have to clean up prematurely
   orig_precision = NULL;
@@ -223,7 +225,9 @@ hdf5_out::hdf5_out(const char *fname, kdu_args& args, kdu_image_dims &dims, int 
   free_lines = NULL;
   num_unwritten_rows = 0;
   initial_non_empty_tiles = 0;
-  float_minvals = float_maxvals = -11024; //Used as a value that flags, nothing in metadata
+  
+  //Used as a value that flags, nothing in metadata
+  float_minvals = float_maxvals = -11024; 
   domain=2; // Linear by default
 
   if (!parse_hdf5_parameters(args, dims)) 
@@ -388,11 +392,12 @@ hdf5_out::~hdf5_out()
 }
 
 /*****************************************************************************/
-/*                               hdf5_out::put                               */
+/*                         hdf5_out::write_stripe                            */
 /*****************************************************************************/
 
-  void
-hdf5_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
+void
+hdf5_out::write_stripe(int height, kdu_byte *buf, 
+    ska_dest_file* const dest_file)
 {
   int width = line.get_width();
   int idx = comp_idx - this->first_comp_idx;
@@ -500,8 +505,8 @@ hdf5_out::put(int comp_idx, kdu_line_buf &line, int x_tnum)
 /*                     hdf5_out::parse_hdf5_parameters                        */
 /*****************************************************************************/
 
-  bool 
-hdf5_out::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims) 
+bool 
+hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args) 
 {
   const char* string;
 
@@ -576,8 +581,8 @@ hdf5_out::parse_hdf5_parameters(kdu_args &args, kdu_image_dims &dims)
 /*                     hdf5_out::parse_hdf5_metadata                         */
 /*****************************************************************************/
 
-  void 
-hdf5_out::parse_hdf5_metadata(kdu_image_dims &dims, bool quiet)
+void 
+hdf5_out::parse_hdf5_metadata(jp2_family_tgt &tgt, bool quiet)
 {
   // Current structure of metadata is one box, with a comma-seperated
   // dictionary.

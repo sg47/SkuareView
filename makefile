@@ -1,21 +1,22 @@
 # @author Sean Peters
 # @brief Makefile for SkuareView-NGAS-plugin
 # Compilation Instruction:
-# To compile, you will need to specify a path to the apps provided by the kakadu library.
+# To compile, you will need to specify a path to the apps provided by the kakadu
+# library.
 # The Libraries required are listed under "# Libraries"
-# If you are working with a newly compiled version of kakadu. Some edits will be required,
-# these are specified within the README.
-# Had to edit kdu_compress.cpp image_in.cpp kdu_image.h (in apps and all includes),
-# changes are tagged with SkuareView-plugin
+# If you are working with a newly compiled version of kakadu. Some edits will be
+# required, these are specified within the README.
+# Had to edit kdu_compress.cpp image_in.cpp kdu_image.h (in apps and all
+# includes), changes are tagged with SkuareView-plugin
 
 ENC=skuareview-encode
 DEC=skuareview-decode
 
 COMPILER=g++ -g -DSKA
 
-OBJS=args.o jp2.o
-E_OBJS=$(OBJS) hdf5_in.o kdu_stripe_compressor.o ska_source.o
-#D_OBJS=$(OBJS) fits_out.o hdf5_out.o kdu_stripe_decompressor.o
+OBJS=args.o jp2.o 
+E_OBJS=ska_source.o fits_in.o hdf5_in.o kdu_stripe_compressor.o $(OBJS)
+D_OBJS=ska_dest.o fits_out.o hdf5_out.o kdu_stripe_decompressor.o $(OBJS)
 
 # Directory absolute paths
 APPS=/home/speters/kakadu-v7/v7_2_1-01265L/apps
@@ -31,29 +32,31 @@ CASA_LIBS=
 TIFF_LIBS=-ltiff
 LIBS=$(KDU_LIBS) $(FITS_LIB) $(HDF5_LIBS) $(CASA_LIBS) $(TIFF_LIBS)
 
-all: $(ENC) 
-#$(DEC)
+all: $(ENC) $(DEC)
 
 $(ENC): $(COMPRESS) $(E_OBJS)
 	$(COMPILER) $(COMPRESS) -o $(ENC) $(E_OBJS) $(LIBS)
 
-#$(DEC): $(EXPAND) $(D_OBJS)
-#$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
+$(DEC): $(EXPAND) $(D_OBJS)
+	$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
 ska_source.o: ska_source.cpp
-	$(COMPILER) -c ska_source.cpp $(LIBS) -o ska_source.o
+	$(COMPILER) -c ska_source.cpp $(LIBS) -o ska_source.o 
+
+ska_dest.o: ska_dest.cpp
+	$(COMPILER) -c ska_dest.cpp $(LIBS) -o ska_dest.o 
 
 hdf5_in.o: hdf5_in.cpp 
 	$(COMPILER) -c hdf5_in.cpp $(LIBS) -o hdf5_in.o
 
-#hdf5_out.o: hdf5_out.cpp 
-#$(COMPILER) -c hdf5_out.cpp $(LIBS)
+hdf5_out.o: hdf5_out.cpp 
+	$(COMPILER) -c hdf5_out.cpp $(LIBS) -o hdf5_out.o
 
-#fits_in.o: fits_in.cpp 
-#$(COMPILER) -c fits_in.cpp $(LIBS) 
+fits_in.o: fits_in.cpp 
+	$(COMPILER) -c fits_in.cpp $(LIBS) -o fits_in.o
 
-#fits_out.o: fits_out.cpp
-#$(COMPILER) -c fits_out.cpp $(LIBS)
+fits_out.o: fits_out.cpp
+	$(COMPILER) -c fits_out.cpp $(LIBS) -o fits_out.o
 
 jp2.o: $(APPS)/jp2/jp2.cpp
 	$(COMPILER) -c $(APPS)/jp2/jp2.cpp -o jp2.o
@@ -61,8 +64,8 @@ jp2.o: $(APPS)/jp2/jp2.cpp
 args.o: $(APPS)/args/args.cpp
 	$(COMPILER) -c $(APPS)/args/args.cpp -o args.o
 
-#kdu_stripe_decompressor.o: $(SUPPORT)/kdu_stripe_decompressor.cpp
-#$(COMPILER) -c $(SUPPORT)/kdu_stripe_decompressor.cpp -o kdu_stripe_decompressor.o
+kdu_stripe_decompressor.o: $(SUPPORT)/kdu_stripe_decompressor.cpp
+	$(COMPILER) -c $(SUPPORT)/kdu_stripe_decompressor.cpp -o kdu_stripe_decompressor.o
 
 kdu_stripe_compressor.o: $(SUPPORT)/kdu_stripe_compressor.cpp
 	$(COMPILER) -c $(SUPPORT)/kdu_stripe_compressor.cpp -o kdu_stripe_compressor.o

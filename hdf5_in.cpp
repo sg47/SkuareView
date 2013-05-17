@@ -70,12 +70,9 @@
 #include "kdu_sample_processing.h"
 // Image includes
 #include "kdu_image.h"
-// IO includes
-#include "kdu_file_io.h"
 #include "image_local.h"
-#include "hdf5_local.h"
 // HDF5 includes
-#include "hdf5.h"
+#include "hdf5_local.h"
 
 /*****************************************************************************/
 /* STATIC                  convert_TFLOAT_to_floats                          */

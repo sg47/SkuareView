@@ -23,6 +23,8 @@ struct cropping {
 
 class ska_source_file;
 class ska_source_file_base;
+class ska_dest_file;
+class ska_dest_file_base;
 
 /*****************************************************************************/
 /*                         class ska_source_file                             */
@@ -37,8 +39,10 @@ class ska_source_file_base {
      * by the SKA to the destination jpeg2000 file. We also require additional
      * arguments not offered by the Kakadu library so that we can richly encode
      * our images.  */
-    virtual void read_header(jp2_family_tgt &tgt, kdu_args &args, ska_source_file * const source_file) = 0;
-    virtual void read_stripe(int height, kdu_byte *buf, ska_source_file * const source_file) = 0;
+    virtual void read_header(jp2_family_tgt &tgt, kdu_args &args,
+        ska_source_file* const source_file) = 0;
+    virtual void read_stripe(int height, kdu_byte *buf, 
+        ska_source_file* const source_file) = 0;
 };
 
 class ska_source_file {
@@ -92,6 +96,72 @@ class ska_source_file {
     /* While multiple files can be accepted as arguments, currently the
      * implementation only processes the first. */
     ska_source_file *next;
+};
+
+/*****************************************************************************/
+/*                          class ska_dest_file                              */
+/*****************************************************************************/
+
+class ska_dest_file_base {
+  /* Pure virtual base class. Provides an interface to derived classes which 
+   * support writing to a specific file type. */
+  public: // Single interface function.
+    virtual ~ska_dest_file_base() {}
+    /* jp2_family_tgt is required to write metadata from file formats used 
+     * by the SKA to the destination jpeg2000 file. We also require additional
+     * arguments not offered by the Kakadu library so that we can richly encode
+     * our images.  */
+    virtual void write_header(jp2_family_tgt &tgt, kdu_args &args,
+        ska_dest_file* const dest_file) = 0;
+    virtual void write_stripe(int height, kdu_byte *buf, 
+        ska_dest_file* const dest_file) = 0;
+};
+
+class ska_dest_file {
+  /* Allows one to readily add file formats encoders for Kakadu's
+   * "stripe_compressor" and "stripe_decompressor". The structure is very
+   * similar to that of "kdu_image_in." */
+  public: // Member functions
+    ska_dest_file() {
+      fname=NULL;
+      fp=NULL;
+      bytes_per_sample=1;
+      precision=8;
+      is_signed=is_raw=swap_bytes=false;
+      size=kdu_coords(0,0);
+      next=NULL;
+    }
+    ~ska_dest_file() {
+      if (fname != NULL) delete[] fname;
+      if (fp != NULL) fclose(fp);
+    }
+    void write_header(jp2_family_tgt &tgt, kdu_args &args);
+    void write_stripe(int height, kdu_byte *buf);
+  private: // Private functions
+    /* Parses generic arguments used by the SKA encoder */
+    void parse_ska_args(jp2_family_tgt &tgt, kdu_args &args);
+  private: // Private data
+    class ska_dest_file_base *out;
+  public: // Data
+    char *fname;
+    FILE *fp;
+    int bytes_per_sample;
+    int precision; // Num bits
+    bool is_signed;
+    bool is_raw;
+    bool swap_bytes; // If raw file word order differs from machine word order
+    bool reversible;
+    kdu_coords size; // Width, and remaining rows
+
+    int forced_prec;
+    cropping crop;
+    float float_minvals; // Minimum float in input file
+    float float_maxvals;
+
+    //TODO
+    /* While multiple files can be accepted as arguments, currently the
+     * implementation only processes the first. */
+    ska_dest_file *next;
 };
 
 #endif

@@ -13,11 +13,10 @@
 
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
 #include "kdu_elementary.h"
-#include "kdu_image.h"
 #include "kdu_file_io.h"
 #include "fitsio.h"
-#include "hdf5.h"
 #include "kdu_args.h"
+#include "ska_local.h"
 
 /**
  * Structure allowing parameters for quality benchmarking to be specified
