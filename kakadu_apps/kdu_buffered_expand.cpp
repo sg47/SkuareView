@@ -318,7 +318,7 @@ static void
 /* STATIC                     parse_simple_args                              */
 /*****************************************************************************/
 
-static ska_dest_files *
+static ska_dest_file*
   parse_simple_args(kdu_args &args, char* &ifname, float &max_bpp,
                     bool &simulate_parsing, int &skip_components,
                     int &max_layers, int &discard_levels,

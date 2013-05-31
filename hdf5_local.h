@@ -62,19 +62,9 @@
 #include <fstream>
 #include "kdu_elementary.h"
 #include "kdu_file_io.h"
+#include "kdu_args.h"
 #include "hdf5.h"
 #include "ska_local.h"
-
-/**
- * Structure for defining essential properties of a HDF5 datacube.
- */
-typedef struct {
-    long width; // Image width
-    long height; // Image height
-    long depth; // Image depth. Arbitrary for 2D images
-    int naxis;
-    int t_class; // Image data type.  Similar to BITPIX in CFITSIO
-} hdf5_cube_info;
 
 class hdf5_in;
 class hdf5_out;
@@ -121,15 +111,13 @@ class hdf5_in : public ska_source_file_base {
 /*****************************************************************************/
 
 class hdf5_out : public ska_dest_file_base {
-  public: // Member functions
-    ~hdf5_out();
+  public: // Member functions ~hdf5_out();
     void write_header(jp2_family_tgt &tgt, kdu_args &args,
         ska_dest_file* const dest_file);      
     void write_stripe(int height, kdu_byte *buf,
         ska_dest_file* const dest_file);
   private: // Data
     // Describes the HDF5 cube we are writing to
-    hdf5_cube_info cinfo; 
     hid_t file; // File handle for the HDF5 file
     hid_t dataset;
     hid_t dataspace;
@@ -145,8 +133,8 @@ class hdf5_out : public ska_dest_file_base {
     hsize_t* dest_dims; // Dimensions of destination HDF5 image
     hsize_t* offset; // Offset within the JPEG2000 image
 
-    int num_components;
     short domain;
+    int t_class;
 
     int scanline_width, unpacked_samples;
     int sample_bytes, pixel_bytes, row_bytes;

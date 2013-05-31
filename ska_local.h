@@ -54,9 +54,7 @@ class ska_source_file {
       fp=NULL;
       bytes_per_sample=1;
       precision=8;
-      is_signed=is_raw=swap_bytes=false;
-      size=kdu_coords(0,0);
-      next=NULL;
+      is_signed=false;
     }
     ~ska_source_file() {
       if (fname != NULL) delete[] fname;
@@ -73,28 +71,14 @@ class ska_source_file {
     char *fname;
     FILE *fp;
     int bytes_per_sample;
-    int precision; // Num bits
-    bool is_signed;
-    bool is_raw;
-    bool swap_bytes; // If raw file word order differs from machine word order
-    bool reversible;
-    kdu_coords size; // Width, and remaining rows
-
     int forced_prec;
-    cropping crop;
-    /* These file streams are used for testing with the parameter -rawtest,
-     * raw_before writes to "encoder_before_rawtest" with csv of the floats of
-     * the input files.
-     * raw after writes to "encoder_after_rawtest" with csv of the floats of
-     * the inputs files after they have been normalized for jpeg2000. */
-    std::ofstream raw_before, raw_after;
-    float float_minvals; // Minimum float in input file
-    float float_maxvals;
+    int precision; // bit depth
+    bool is_signed;
+    bool reversible;
 
-    //TODO
-    /* While multiple files can be accepted as arguments, currently the
-     * implementation only processes the first. */
-    ska_source_file *next;
+    cropping crop;
+    double float_minvals, float_maxvals;
+    int num_unread_rows;
 };
 
 /*****************************************************************************/

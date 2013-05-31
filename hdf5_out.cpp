@@ -239,7 +239,7 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
     e << "Output image files require more image components "
       "(or mapped colour channels) than are available!";
 
-  cinfo.t_class = H5T_FLOAT;  // ICRAR's hdf5 dataset is stored as a float
+  t_class = H5T_FLOAT;  // ICRAR's hdf5 dataset is stored as a float
   cinfo.naxis = 3; // ICRAR's hdf5 dataset currently has 3 dimensions
   cinfo.height = dims.get_height(first_comp_idx); // rows
   cinfo.width = dims.get_width(first_comp_idx); // cols

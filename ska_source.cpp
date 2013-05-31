@@ -1,4 +1,4 @@
-#include "ska_source.h"
+#include "ska_local.h"
 #include "hdf5_local.h"
 #include "fits_local.h"
 
@@ -91,24 +91,6 @@ void
           forced_prec = val;
 
           args.advance();
-    }
-
-    /* Ouput the values encoded before and after renormalization to a raw
-     * data file for testing analysis*/
-    if (args.find("-rawtest") != NULL)
-    {
-      /* raw data values before they are normalized for the JPX image. These
-       * can be compared against decoder_after_raw, to see how the precision
-       * of the values compared after they have been renormalized back to
-       * they're origional values. */
-      raw_before.open("encoder_before_rawtest");
-
-      /* raw data values after they are normalized for the JPX image. These
-       * can be compared against the decoder_before_raw, to see how the 
-       * precision of the values is affected by the internal Kakadu compressor
-       * exclusively. */
-      raw_after.open("encoder_after_rawtest");
-      args.advance();
     }
 
     if (args.find("-minmax") != NULL)

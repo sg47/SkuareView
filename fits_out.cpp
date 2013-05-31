@@ -47,14 +47,16 @@ fits_out::write_header(jp2_family_tgt &tgt, kdu_args &args,
 
   /* Retrieve and use varaibles related to the input JPX image */
 
-  cinfo.bitpix = FLOAT_IMG;
-  cinfo.naxis = 2;
+  bitpix = FLOAT_IMG;
+  naxis = 2;
 
   // Create destination FITS file
   fits_create_file(&out, dest_file->fname, &status);
 
-  long int* naxes = (long int*) malloc(sizeof(long int) * cinfo.naxis);
-  fits_create_img(out, cinfo.bitpix, cinfo.naxis, naxes, &status);
+  long int* naxes = (long int*) malloc(sizeof(long int) * naxis);
+  fits_create_img(out, bitpix, naxis, naxes, &status);
+  dest_file->crop.width = naxes[0];
+  dest_file->crop.height = naxes[1];
 }
 
 /*****************************************************************************/
@@ -79,14 +81,17 @@ void
 fits_out::write_stripe(int height, kdu_byte* buf, 
     ska_dest_file* const dest_file)
 {
+  kdu_error e;
+  kdu_warning w;
+
   int anynul=0;
   unsigned char nulval=0;
 
-  switch (cinfo.bitpix) { 
+  switch (bitpix) { 
     case FLOAT_IMG:  
       {
-        fits_write_pixll(out, TFLOAT, fpixel, dest_file->cropping.width, 
-            &nulval, buf, &anynul, &status);
+        //fits_write_pixll(out, TFLOAT, fpixel, dest_file->crop.width, 
+            //&nulval, buf, &anynul, &status);
         free(buf);
         break;
       }
@@ -96,8 +101,8 @@ fits_out::write_stripe(int height, kdu_byte* buf,
     e << "FITS file terminated prematurely!"; 
 
   // increment the position in FITS file
-  fpixel[0] = dest_file->cropping.x + 1; // read from the begining of line
-  fpixel[1] += height; // keep the frame and stoke the same and increment the row
+  fpixel[0] = dest_file->crop.x + 1; // read from the begining of line
+  fpixel[1] += dest_file->crop.height; // keep the frame and stoke the same and increment the row
 
-  num_unread_rows -= height;
+  dest_file->num_unwritten_rows -= height;
 }

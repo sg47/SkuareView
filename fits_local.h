@@ -14,8 +14,8 @@
 #include <stdio.h> // C I/O functions can be quite a bit faster than C++ ones
 #include "kdu_elementary.h"
 #include "kdu_file_io.h"
-#include "fitsio.h"
 #include "kdu_args.h"
+#include "fitsio.h"
 #include "ska_local.h"
 
 /**
@@ -160,18 +160,6 @@ typedef struct {
 
 } fits_param;
 
-/**
- * Structure for defining essential properties of a FITS datacube.
- */
-typedef struct {
-  int type;
-  long width; // Image width
-  long height; // Image height
-  LONGLONG depth; // Image depth.  Arbitrary for 2D images
-  LONGLONG stokes; // Number of stokes in image.  Arbitrary for 2D or 3D images
-  int naxis; // Number of dimensions of the data cube
-  int bitpix; // Image data type.  Same as BITPIX in CFITSIO
-} fits_cube_info;
 class fits_in;
 class fits_out;
 
@@ -179,7 +167,7 @@ class fits_out;
 /*                             class fits_in                                  */
 /*****************************************************************************/
 
-class fits_in : public kdu_image_in_base {
+class fits_in : public ska_source_file_base {
   public: // Member functions
     ~fits_in();
     void read_header(jp2_family_tgt &tgt, kdu_args &args,
@@ -187,50 +175,27 @@ class fits_in : public kdu_image_in_base {
     void read_stripe(int height, kdu_byte *buf,
         ska_source_file* const source_file);
   private: // Members describing the organization of the FITS data
-    double float_minvals; // When FITS file contains floating-point samples
-    double float_maxvals; // When FITS file contains floating-point samples
-    kdu_uint16 bitspersample;
-    kdu_simple_file_source src;
     fitsfile *in;     //pointer to open FITS image
     int status;    // returned status of FITS functions
-    fits_cube_info cinfo;  // FITS specific info
     fits_param fits;  // specific FITS parameters
     LONGLONG *fpixel; // array used by CFITSIO to specify starting pixel to read from.
     LONGLONG current_frame; // holds the currently read fream
-    int current_stoke; // holds the currently read stoke
     int nkeys;  //fits keywords
     char keyname[FLEN_CARD];  //fits
     char keyvalue[FLEN_CARD];  //fits
     char keycomment[FLEN_CARD];  //fits
     bool parse_fits_parameters(kdu_args &args);
-    int first_comp_idx;
-    LONGLONG num_bytes;  // Number of bytes to read from FITS to the buffer
-    int num_components; // May be > `samplesperpixel' if there is a palette
-    int precision;
-    int bytesample;
-    int sample_bytes; // After expanding any palette
-    //    kdu_byte map[1024]; // Used when expanding a palette
-    int rows, cols;  // Dimensions after applying any cropping
-    int num_unread_rows; // Always starts at `rows', even with cropping
-    int tilesout;
-    LONGLONG planesout;
-    image_line_buf *incomplete_lines; // Each "sample" represents a full pixel
-    image_line_buf *free_lines;
     int scale;
-
-    //    int initial_non_empty_tiles; // tnum >= this implies empty; 0 until we know
-    bool littlendian; // Byte order of data in `image_line_buf's
-    //--------------------------------------------------------------------------
-  private: // Members which are affected by (or support) cropping
-    int skip_rows; // Number of initial rows to skip from original image
-    int skip_cols; // Number of initial cols to skip from original image
+    int bitpix;
+    int type;
+    int naxis;
 };
 
 /*****************************************************************************/
 /*                             class fits_out                                */
 /*****************************************************************************/
 
-class fits_out : public kdu_image_in_base {
+class fits_out : public ska_dest_file_base {
   public: // Public functions
     ~fits_out();
     void write_header(jp2_family_tgt &tgt, kdu_args &args,
@@ -242,7 +207,6 @@ class fits_out : public kdu_image_in_base {
   private: 
     fitsfile *out;     //pointer to open FITS image
     int status;    // returned status of FITS functions
-    fits_cube_info cinfo;  // FITS specific info
     fits_param fits;  // specific FITS parameters
     LONGLONG *fpixel; // array used by CFITSIO to specify starting pixel to read from.
     LONGLONG current_frame; // holds the currently read fream
@@ -251,9 +215,7 @@ class fits_out : public kdu_image_in_base {
     char keyvalue[FLEN_CARD];  //fits
     char keycomment[FLEN_CARD];  //fits
     int scale;
-
-    //--------------------------------------------------------------------------
-  private: // Members which are affected by (or support) cropping
-    int skip_rows; // Number of initial rows to skip from original image
-    int skip_cols; // Number of initial cols to skip from original image
+    int bitpix;
+    int type;
+    int naxis;
 };

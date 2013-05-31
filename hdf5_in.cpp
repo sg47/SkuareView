@@ -375,6 +375,7 @@ void
  * dangerous assumption that the stripe height provided will never exceed the
  * bounds of the image from our current index in the cube. */
 {
+  kdu_error e;
   int width = source_file->crop.width; // Number of samples in the line
   dims_mem[1] = height;
 
@@ -398,17 +399,17 @@ void
 
         if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
               H5P_DEFAULT, buf_in) < 0)
-        { kdu_error e; e << "Unable to read FLOAT HDF5 dataset."; }
+        e << "Unable to read FLOAT HDF5 dataset."; 
 
-        if (source_file->reversible)
-          convert_TFLOAT_to_ints(buf_in, buf, width, source_file->precision, 
-              true, source_file->float_minvals, source_file->float_maxvals, 
-              source_file->bytes_per_sample, 
-              source_file->raw_before, source_file->raw_after);
-        else
-          convert_TFLOAT_to_floats(buf_in, buf, width, source_file->is_signed, 
-              source_file->float_minvals, source_file->float_maxvals, 
-              source_file->raw_before, source_file->raw_after);
+       // if (source_file->reversible)
+       //   convert_TFLOAT_to_ints(buf_in, buf, width, source_file->precision, 
+       //       true, source_file->float_minvals, source_file->float_maxvals, 
+       //       source_file->bytes_per_sample, 
+       //       source_file->raw_before, source_file->raw_after);
+       // else
+       //   convert_TFLOAT_to_floats(buf_in, buf, width, source_file->is_signed, 
+       //       source_file->float_minvals, source_file->float_maxvals, 
+       //       source_file->raw_before, source_file->raw_after);
         free(buf_in);
         break;
       }
