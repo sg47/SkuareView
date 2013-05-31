@@ -1,5 +1,6 @@
-#include "ska_local.h"
+#include "ska_source.h"
 #include "hdf5_local.h"
+#include "fits_local.h"
 
 /*****************************************************************************/
 /*                      ska_source_file::read_header                         */

@@ -64,7 +64,7 @@ Description:
 #include "kdu_file_io.h"
 #include "jp2.h"
 // SKA includes
-#include "../ska_local.h"
+#include "../ska_source.h"
 
 /* ========================================================================= */
 /*                         Set up messaging services                         */

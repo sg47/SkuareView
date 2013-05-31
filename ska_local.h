@@ -5,7 +5,6 @@
 #include "kdu_args.h"
 #include "jp2.h"
 
-
 /* Specifies the cropping of the input hdf5 file. Currently only 1 plane
  * is specified. Previously we had handled the 3rd dimension with components
  * however this approach is not feasible with the stripe compressor. The reason
@@ -13,7 +12,7 @@
  * cubes are anticipated to have 10 000s of planes this approach is not 
  * feasible. */
 struct cropping {
-  bool specified;
+  bool specified; // if false, use full extent of image
   int x;
   int y;
   int z; // Selection plane of the hdf5 cube
@@ -127,8 +126,7 @@ class ska_dest_file {
       fp=NULL;
       bytes_per_sample=1;
       precision=8;
-      is_signed=is_raw=swap_bytes=false;
-      size=kdu_coords(0,0);
+      is_signed=false;
       next=NULL;
     }
     ~ska_dest_file() {
@@ -146,17 +144,16 @@ class ska_dest_file {
     char *fname;
     FILE *fp;
     int bytes_per_sample;
-    int precision; // Num bits
+    int precision; // bit depth
+    int forced_prec; // see -fprec
+    bool little_endian;
     bool is_signed;
-    bool is_raw;
-    bool swap_bytes; // If raw file word order differs from machine word order
-    bool reversible;
-    kdu_coords size; // Width, and remaining rows
 
-    int forced_prec;
-    cropping crop;
-    float float_minvals; // Minimum float in input file
-    float float_maxvals;
+    int* dimensions; // JP2 image dimensions
+    cropping crop; // cropping specified of the JP2 dimensions
+    double samples_min, samples_max; // min/max values of all samples
+    bool reversible; // reversible compression
+    int num_unwritten_rows;
 
     //TODO
     /* While multiple files can be accepted as arguments, currently the

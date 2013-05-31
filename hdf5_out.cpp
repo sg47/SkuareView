@@ -220,8 +220,8 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
 {
   kdu_error e;
   kdu_warning w;
-  num_unwritten_rows = 0;
-  
+  dest_file->num_unwritten_rows = 0;
+
   // default min and max
   dest_file->samples_min = -0.5;
   dest_file->samples_max = 0.5;
@@ -230,134 +230,102 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
   parse_hdf5_metadata(dims, quiet);
 
   if (!parse_hdf5_parameters(args, dims)) 
-  { kdu_error e; e << "Unable to parse HDF5 parameters"; }
+    kdu_error e; e << "Unable to parse HDF5 parameters";
 
   // Find max image components
   first_comp_idx = next_comp_idx;
   num_components = dims.get_num_components() - first_comp_idx;
   if (num_components <= 0)
-  { kdu_error e; e << "Output image files require more image components "
-    "(or mapped colour channels) than are available!"; }
+    e << "Output image files require more image components "
+      "(or mapped colour channels) than are available!";
 
-    cinfo.t_class = H5T_FLOAT;  // ICRAR's hdf5 dataset is stored as a float
-    cinfo.naxis = 3; // ICRAR's hdf5 dataset currently has 3 dimensions
-    cinfo.height = dims.get_height(first_comp_idx); // rows
-    cinfo.width = dims.get_width(first_comp_idx); // cols
-    cinfo.depth = num_components; // We use components currently as frames
+  cinfo.t_class = H5T_FLOAT;  // ICRAR's hdf5 dataset is stored as a float
+  cinfo.naxis = 3; // ICRAR's hdf5 dataset currently has 3 dimensions
+  cinfo.height = dims.get_height(first_comp_idx); // rows
+  cinfo.width = dims.get_width(first_comp_idx); // cols
+  cinfo.depth = num_components; // We use components currently as frames
 
-    // Find component dimensions and other info
-    // As far as I know all components will always have the same is_signed
-    // and precision values. However just in case we assume they do not 
-    is_signed = new bool[num_components];
-    orig_precision = new int[num_components];
-    precision = 0; // Just for now
-    forced_align_lsbs = false; // Just for now
+  if (dest_file->forced_prec != -1)
+    precision = forced_prec;
+  else
+    dest_file->precision = 32;
 
-    for (int n = 0; n < num_components; ++n, ++next_comp_idx) {
-      is_signed[n] = dims.get_signed(next_comp_idx);
-      int comp_prec = orig_precision[n] = dims.get_bit_depth(next_comp_idx);
-      bool align_lsbs = false;
-
-      // implemement the -fprec parameter
-      int forced_prec = dims.get_forced_precision(next_comp_idx, align_lsbs);
-      if (forced_prec != 0)
-        comp_prec  = forced_prec;
-
-      if (n == 0) {
-        precision = comp_prec;
-        forced_align_lsbs = align_lsbs;
-      }
-      if ((cinfo.height != dims.get_height(next_comp_idx)) ||
-          (cinfo.width != dims.get_width(next_comp_idx)) ||
-          (comp_prec != precision) || (forced_align_lsbs != align_lsbs)) {
-        assert(n > 0);
-        break;
-      }
-    }
-    next_comp_idx = first_comp_idx + num_components;
-
-    // Find the sample bytes
-    if (precision <= 8)
-      sample_bytes = 1;
-    else if (precision <= 16)
-      sample_bytes = 2;
-    else if (precision <= 32)
-      sample_bytes = 4;
-    else 
-    { kdu_error e; e << "Cannot write the output with sample precision "
+  // Find the sample bytes
+  if (precision <= 8)
+    dest_file->bytes_per_sample = 1;
+  else if (precision <= 16)
+    dest_file->bytes_per_sample = 2;
+  else if (precision <= 32)
+    dest_file->bytes_per_sample = 4;
+  else 
+    e << "Cannot write the output with sample precision "
       "in excess of 32 bits per sample. You may like to use the \"-fprec"
-        "\" option to force the writing to a different precision."; }
+      "\" option to force the writing to a different precision."; 
 
-      /* Setup the variables related to the output HDF5 image */
 
-      orig_dims = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-      orig_dims[0] = cinfo.width;
-      orig_dims[1] = cinfo.height;
-      orig_dims[2] = cinfo.depth;
+  /* Setup the variables related to the output HDF5 image */
 
-      std::cout << "JPX image dimensions:\n"
-        << "rows = " << cinfo.height << "\n"
-        << "cols = " << cinfo.width << "\n"
-        << "frames = " << cinfo.depth << "\n";
+  orig_dims = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+  orig_dims[0] = cinfo.width;
+  orig_dims[1] = cinfo.height;
+  orig_dims[2] = cinfo.depth;
 
-      // TODO: implement specifying cropping
-      dest_dims = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-      dest_dims[0] = cinfo.depth;
-      dest_dims[1] = cinfo.height;
-      dest_dims[2] = cinfo.width;
+  std::cout << "JPX image dimensions:\n"
+    << "rows = " << cinfo.height << "\n"
+    << "cols = " << cinfo.width << "\n"
+    << "frames = " << cinfo.depth << "\n";
 
-      // Dimensions of hyperslab selection will be row by row
-      // Also used aas chunk dimensions
-      dims_mem = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-      dims_mem[0] = 1;
-      dims_mem[1] = 1;
-      dims_mem[2] = cinfo.width;
+  // TODO: implement specifying cropping
+  dest_dims = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+  dest_dims[0] = cinfo.depth;
+  dest_dims[1] = cinfo.height;
+  dest_dims[2] = cinfo.width;
 
-      // Create the dataspace
-      dataspace = H5Screate_simple(cinfo.naxis, dest_dims, NULL); 
-      if (dataspace < 0)
-      { kdu_error e; e << "Unable to create dataspace for output HDF5 image."; }
+  // Create the dataspace
+  dataspace = H5Screate_simple(cinfo.naxis, dest_dims, NULL); 
+  if (dataspace < 0)
+    e << "Unable to create dataspace for output HDF5 image.";
 
-      // Create the new file
-      file = H5Fcreate(fname, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
-      if (file < 0)
-      { kdu_error e; e << "Unable to create output HDF5 image file."; }
+  // Create the new file
+  file = H5Fcreate(fname, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  if (file < 0)
+    e << "Unable to create output HDF5 image file.";
 
-      // Create the properties in order to create the dataset
-      cparms = H5Pcreate(H5P_DATASET_CREATE);
-      if (cparms < 0)
-      { kdu_error e; e << "Unable to create dataset properties for output "
-        "HDF5 image."; }
-        if (H5Pset_chunk(cparms, cinfo.naxis, dims_mem) < 0)
-        { kdu_error e; e << "Unable to set chunk for dataset."; }
-        int fill_value = 0;
-        if (H5Pset_fill_value(cparms, H5T_NATIVE_FLOAT, &fill_value) < 0)
-        { kdu_error e; e << "Unable to set fill value for dataset."; }
+  // Create the properties in order to create the dataset
+  cparms = H5Pcreate(H5P_DATASET_CREATE);
+  if (cparms < 0)
+    e << "Unable to create dataset properties for output "
+      "HDF5 image."; 
+  if (H5Pset_chunk(cparms, cinfo.naxis, dims_mem) < 0)
+    e << "Unable to set chunk for dataset."; 
+  int fill_value = 0;
+  if (H5Pset_fill_value(cparms, H5T_NATIVE_FLOAT, &fill_value) < 0)
+    e << "Unable to set fill value for dataset."; 
 
-        // Create the dataset
-        dataset = H5Dcreate2(file, DATASET_NAME, H5T_NATIVE_FLOAT, dataspace,
-            H5P_DEFAULT, cparms, H5P_DEFAULT);
-        if (dataset < 0)
-        { kdu_error e; e << "Unable to create dataset for output HDF5 image."; }
+  // Create the dataset
+  dataset = H5Dcreate2(file, DATASET_NAME, H5T_NATIVE_FLOAT, dataspace,
+      H5P_DEFAULT, cparms, H5P_DEFAULT);
+  if (dataset < 0)
+    e << "Unable to create dataset for output HDF5 image."; 
 
-        // Set the extent of the dataset
-        if (H5Dset_extent(dataset, dest_dims) < 0)
-        { kdu_error e; e << "Unable to set extent of dataset."; }
+  // Set the extent of the dataset
+  if (H5Dset_extent(dataset, dest_dims) < 0)
+    kdu_error e; e << "Unable to set extent of dataset.";
 
-        // Get the filespace
-        filespace = H5Dget_space(dataset);
-        if (filespace < 0)
-        { kdu_error e; e << "Unable to get filespace for output HDF5 image."; }
+  // Get the filespace
+  filespace = H5Dget_space(dataset);
+  if (filespace < 0)
+    e << "Unable to get filespace for output HDF5 image."; 
 
-        // Create the memory space to use in put
-        memspace = H5Screate_simple(cinfo.naxis, dims_mem, NULL);
-        if (memspace < 0)
-        { kdu_error e; e << "Unable to create memory space for HDF5 image."; }
+  // Create the memory space to use in put
+  memspace = H5Screate_simple(cinfo.naxis, dims_mem, NULL);
+  if (memspace < 0)
+    e << "Unable to create memory space for HDF5 image."; 
 
-        offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-        offset[0] = offset[1] = offset[2] = 0;
+  offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+  offset[0] = offset[1] = offset[2] = 0;
 
-        num_unwritten_rows = cinfo.height;
+  num_unwritten_rows = cinfo.height;
 }
 
 /*****************************************************************************/
@@ -366,9 +334,12 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
 
 hdf5_out::~hdf5_out()
 {
+  kdu_warning w;
+  kdu_error e;
+
   if ((num_unwritten_rows > 0) || (incomplete_lines != NULL))
-  { kdu_warning w; w << "Not all rows of the image component " << 
-    first_comp_idx << " were completed!"; }
+    w << "Not all rows of the image component " << 
+    first_comp_idx << " were completed!";
 
     image_line_buf *tmp;
     while ((tmp=incomplete_lines) != NULL)
@@ -382,7 +353,7 @@ hdf5_out::~hdf5_out()
     free(dest_dims);
 
     if (H5Dclose(dataset) < 0 || H5Sclose(dataspace) < 0 || H5Fclose(file) < 0)
-    { kdu_error e; e << "Unable to cleanly close HDF5 file."; }
+    e << "Unable to cleanly close HDF5 file.";
 }
 
 /*****************************************************************************/
@@ -393,106 +364,40 @@ void
 hdf5_out::write_stripe(int height, kdu_byte *buf, 
     ska_dest_file* const dest_file)
 {
-  int width = line.get_width();
-  int idx = comp_idx - this->first_comp_idx;
+  kdu_warning w;
+  kdu_error e;
 
-  // ICRAR's current HDF5 image format makes no use of tiles. So much of the
-  // tile related code, may be considered a little superfluous and is 
-  // completely untested. However I thought to include it just in case.
-  x_tnum = x_tnum * num_components + idx; 
+  if (num_unwritten_rows == 0)
+    e << "Attempting to write too many lines to image.";
 
-  if ((initial_non_empty_tiles != 0) && (x_tnum >= initial_non_empty_tiles)) {
-    assert(width == 0);
-    return;
+  // Dimensions of hyperslab selection will be row by row
+  // Also used aas chunk dimensions
+  dims_mem = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+  dims_mem[0] = 1;
+  dims_mem[1] = height;
+  dims_mem[2] = cinfo.width;
+
+  // Select the hyperslab (in this case row) that we are going to write to
+  if (H5Sselect_hyperslab(filespace, H5S_SELECT_SET, offset, NULL,
+        dims_mem, NULL) < 0)
+    e << "Unable to select hyperslab within HDF5 dataset."; 
+
+  buf = malloc(4 * width); 
+  if (dest_file->reversible) {
+    if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
+          H5P_DEFAULT, buf) < 0)
+      e << "Unable to write to HDF5 file."; 
   }
-
-  image_line_buf *scan=NULL, *prev=NULL;
-  for (scan=incomplete_lines; scan != NULL; prev=scan, scan=scan->next) {
-    assert(scan->next_x_tnum >= x_tnum);
-    if (scan->next_x_tnum == x_tnum)
-      break;
+  else {
+    if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
+          H5P_DEFAULT, buf) < 0)
+      e << "Unable to write to HDF5 file."; 
   }
+  free(buf);
 
-  if (scan == NULL) { // Need to open a new line buffer.
-    assert(x_tnum == 0); // Must supply samples from left to right.
-    if ((scan = free_lines) == NULL)
-      // Big enough for padding and expanding bits to bytes
-      scan = new image_line_buf(width, sample_bytes);
-    free_lines = scan->next;
-    if (prev == NULL)
-      incomplete_lines = scan;
-    else
-      prev->next = scan;
-    scan->accessed_samples = 0;
-    scan->next_x_tnum = 0;
-  }
-  assert((scan->width-scan->accessed_samples) >= line.get_width());
+  offset[1] += height;
 
-  scan->next_x_tnum++; 
-  if (idx == (num_components-1))
-    scan->accessed_samples += line.get_width();
-  if (scan->accessed_samples == cinfo.width) {
-    // Write completed line and send it to the free list
-    if (initial_non_empty_tiles == 0)
-      initial_non_empty_tiles = scan->next_x_tnum;
-    else
-      assert(initial_non_empty_tiles == scan->next_x_tnum);
-
-    if (num_unwritten_rows == 0)
-    { kdu_error e; e << "Attempting to write too many lines to image "
-      "file for components " << first_comp_idx << " through "
-        << first_comp_idx + num_components - 1 << "."; }
-
-      // Select the hyperslab (in this case row) that we are going to write to
-      if (H5Sselect_hyperslab(filespace, H5S_SELECT_SET, offset, NULL,
-            dims_mem, NULL) < 0)
-      { kdu_error e; e << "Unable to select hyperslab within HDF5 dataset."; }
-
-      // Finall we write the row to HDF5 file
-      float* buf = (float*) malloc(4 * width); //TODO: With other formats this
-      // buffer size will change.
-      if (line.is_absolute()) {
-        convert_ints_to_TFLOAT(line, buf, width,
-            orig_precision[idx], float_minvals, float_maxvals,
-            raw_before, raw_after);
-
-        if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
-              H5P_DEFAULT, buf) < 0)
-        { kdu_error e; e << "Unable to write to HDF5 file."; }
-      }
-      else {
-        convert_floats_to_TFLOAT(line.get_buf32(), buf, width,
-            float_minvals, float_maxvals, domain, raw_before,
-            raw_after);
-
-        if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
-              H5P_DEFAULT, buf) < 0)
-        { kdu_error e; e << "Unable to write to HDF5 file."; }
-      }
-      free(buf);
-
-      // Adjust our offset in the image after writing the row
-      // TODO: currently specifiying a cropping on the image is unimplemented.
-      offset[0] = 0; // set col to beginning of next line
-      if (offset[1] == dest_dims[1] - 1) { // just read last row in frame
-        offset[1] = 0; // set row to beginning of next frame
-        if (cinfo.naxis > 2 && cinfo.depth > 1) {
-          if (offset[2] != dest_dims[2] - 1) {
-            offset[2]++; // next frame
-            ++comp_idx;      // new frame - next component
-          }
-        }
-      }
-      else {
-        offset[1]++; // otherwise just go to next row
-      }
-
-      num_unwritten_rows--;
-      assert(scan == incomplete_lines);
-      incomplete_lines = scan->next;
-      scan->next = free_lines;
-      free_lines = scan;
-  }
+  num_unwritten_rows--;
 }
 
 /*****************************************************************************/

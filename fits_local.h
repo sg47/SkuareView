@@ -231,43 +231,27 @@ class fits_in : public kdu_image_in_base {
 /*****************************************************************************/
 
 class fits_out : public kdu_image_in_base {
-  public: // Member functions
+  public: // Public functions
     ~fits_out();
     void write_header(jp2_family_tgt &tgt, kdu_args &args,
         ska_dest_file* const dest_file);
     void write_stripe(int height, kdu_byte *buf,
         ska_dest_file* const dest_file);
-  private: // Members describing the organization of the FITS data
-    double float_minvals; // When FITS file contains floating-point samples
-    double float_maxvals; // When FITS file contains floating-point samples
-    kdu_uint16 bitspersample;
-    fitsfile *in;     //pointer to open FITS image
+  private: // Private functions
+    bool parse_fits_parameters(kdu_args &args);
+  private: 
+    fitsfile *out;     //pointer to open FITS image
     int status;    // returned status of FITS functions
     fits_cube_info cinfo;  // FITS specific info
     fits_param fits;  // specific FITS parameters
     LONGLONG *fpixel; // array used by CFITSIO to specify starting pixel to read from.
     LONGLONG current_frame; // holds the currently read fream
-    int current_stoke; // holds the currently read stoke
     int nkeys;  //fits keywords
     char keyname[FLEN_CARD];  //fits
     char keyvalue[FLEN_CARD];  //fits
     char keycomment[FLEN_CARD];  //fits
-    bool parse_fits_parameters(kdu_args &args);
-    int first_comp_idx;
-    LONGLONG num_bytes;  // Number of bytes to read from FITS to the buffer
-    int num_components; // May be > `samplesperpixel' if there is a palette
-    int precision;
-    int bytesample;
-    int sample_bytes; // After expanding any palette
-    int rows, cols;  // Dimensions after applying any cropping
-    int num_unread_rows; // Always starts at `rows', even with cropping
-    int tilesout;
-    LONGLONG planesout;
-    image_line_buf *incomplete_lines; // Each "sample" represents a full pixel
-    image_line_buf *free_lines;
     int scale;
 
-    bool littlendian; // Byte order of data in `image_line_buf's
     //--------------------------------------------------------------------------
   private: // Members which are affected by (or support) cropping
     int skip_rows; // Number of initial rows to skip from original image
