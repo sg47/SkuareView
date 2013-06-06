@@ -428,8 +428,10 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
 /* Parses all command line arguments whose names include a dash.  Returns
    a list of open input files. */
 {
+  std::cout << "p0" << std::endl;
   kdu_error e;
   kdu_warning w;
+  std::cout << "p0.1" << std::endl;
 
   if ((args.get_first() == NULL) || (args.find("-u") != NULL))
     print_usage(args.get_prog_name());
@@ -448,7 +450,9 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
   double_buffering_height = 0; // i.e., no double buffering
   cpu = false;
   bool little_endian = false;
+  std::cout << "p1" << std::endl;
   ska_source_file* ifile = new ska_source_file ();
+  std::cout << "p2" << std::endl;
 
   if (args.find("-o") != NULL) {
     const char *string = args.advance();
@@ -583,6 +587,7 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
   if (ifile == NULL)
     e << "You must supply an input file"; 
 
+  std::cout << "p3" << std::endl;
   return ifile;
 }
 
@@ -635,11 +640,13 @@ int main(int argc, char *argv[])
   int preferred_min_stripe_height, absolute_max_stripe_height;
   int num_threads, env_dbuf_height, flush_period;
   bool cpu;
+  std::cout << "1" << std::endl;
   ska_source_file *ifile =
     parse_simple_args(args,ofname,max_rate,min_rate,rate_tolerance,
         preferred_min_stripe_height,
         absolute_max_stripe_height,flush_period,
         num_threads,env_dbuf_height,cpu);
+  std::cout << "2" << std::endl;
 
   // Create appropriate output file
   kdu_compressed_target *output = NULL;
