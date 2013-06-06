@@ -173,8 +173,8 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   if (status != 0) 
     e << "Unable to get the number of header keywords in FITS file";
 
-  float_minvals = fits.deafult_min;
-  float_maxvals = fits.deafult_max;
+  source_file->float_minvals = fits.deafult_min;
+  source_file->float_maxvals = fits.deafult_max;
 
   for (int ii=1; ii<=nkeys; ii++) {
     fits_read_keyn(in,ii,keyname,keyvalue,keycomment, &status);
@@ -184,8 +184,10 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     // overwitte default min and max values for the entire image
     if (!fits.minmax)
     {
-      if (!strcmp(keyname, "DATAMIN")) sscanf(keyvalue, "%lf", &float_minvals);
-      if (!strcmp(keyname, "DATAMAX")) sscanf(keyvalue, "%lf", &float_maxvals);
+      if (!strcmp(keyname, "DATAMIN")) 
+        sscanf(keyvalue, "%lf", &source_file->float_minvals);
+      if (!strcmp(keyname, "DATAMAX")) 
+        sscanf(keyvalue, "%lf", &source_file->float_maxvals);
     }
 
     if (fits.meta)
@@ -193,8 +195,8 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
 
   }
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
-  std::cout << "DATAMIN = " << float_minvals << "\n";
-  std::cout << "DATAMAX = " << float_maxvals << "\n";
+  std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
+  std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
 
   double scale = 1.0;
   double zero = 0.0;

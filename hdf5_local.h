@@ -91,11 +91,11 @@ class hdf5_in : public ska_source_file_base {
     hsize_t* offset; // The offset of the dimensions of the HDF5 image that we're 
                      // converting.
     hsize_t* offset_out; // Offset within the already selected hyperslab
+    int t_class;
     // The extent of each of the dimensions of the hyperslab in the file. i.e. 
     // length, breadth, etc.
     hsize_t* extent; 
     // Describes the entire HDF5 cube and not just the selection we are encoding
-    hdf5_cube_info cinfo;       
     short domain;
    
     bool littlendian; // true if data order is littlendian

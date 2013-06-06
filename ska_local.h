@@ -12,12 +12,14 @@
  * cubes are anticipated to have 10 000s of planes this approach is not 
  * feasible. */
 struct cropping {
+  int naxis;
   bool specified; // if false, use full extent of image
   int x;
   int y;
   int z; // Selection plane of the hdf5 cube
   int height;
   int width;
+  int depth; // TODO: currently not being used
 };
 
 class ska_source_file;

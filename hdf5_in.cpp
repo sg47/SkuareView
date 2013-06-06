@@ -172,34 +172,37 @@ void
   hdf5_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     ska_source_file * const source_file)
 {
+  kdu_error e;
+  kdu_warning w;
+
   // Initialize the state incase we need to cleanup prematurely
   num_unread_rows = 0;
   domain=2;
   int num_components = 1;
 
   if (!parse_hdf5_parameters(tgt, args)) 
-  { kdu_error e; e << "Unable to parse HDF5 parameters"; }
+    e << "Unable to parse HDF5 parameters"; 
 
   // Open the file
   file = H5Fopen(source_file->fname, H5F_ACC_RDONLY, H5P_DEFAULT);
   if (file < 0) 
-  { kdu_error e; e << "Unable to open input HDF5 file."; }
+    e << "Unable to open input HDF5 file."; 
 
   // Open the dataset
   // TODO: Currently can only read HDF5 images with dataset "full_cube"
   dataset = H5Dopen(file, "full_cube", H5P_DEFAULT); 
   if (dataset < 0) 
-  { kdu_error e; e << "Unable to open dataset in HDF5 file."; }
+    e << "Unable to open dataset in HDF5 file."; 
 
   // Get the datatype of the dataset
   datatype = H5Dget_type(dataset);
   if (datatype < 0) 
-  { kdu_error e; e << "Unable to get data type of dataset in HDF5 file."; }
+    e << "Unable to get data type of dataset in HDF5 file."; 
 
   // Get the data class of the dataset
-  cinfo.t_class = H5Tget_class(datatype);
-  if (cinfo.t_class == H5T_NO_CLASS) 
-  { kdu_error e; e << "Unable to get class type of dataset in HDF5 file."; }
+  t_class = H5Tget_class(datatype);
+  if (t_class == H5T_NO_CLASS) 
+    e << "Unable to get class type of dataset in HDF5 file."; 
 
   // Get the data order (i.e littlendian or bigendian)
   order = H5Tget_order(datatype); 
@@ -208,135 +211,135 @@ void
   else if (order == H5T_ORDER_BE)
     littlendian = false;
   else
-  { kdu_error e; e << "Unable to identify data order of dataset in HDF5 "
-    "file."; }
+    e << "Unable to identify data order of dataset in HDF5 file."; 
 
-    // Identify if the data is signed
-    source_file->is_signed = true; // floats are always signed
-    if (cinfo.t_class != H5T_FLOAT) { // TODO: When implement support for further
-      // classes. This will be extended.
-      int is_signed_h5 = H5Tget_sign(datatype);
-      if (is_signed_h5 == H5T_SGN_2)
-        source_file->is_signed = true;
-      else if (is_signed_h5 == H5T_SGN_NONE)
-        source_file->is_signed = false;
-      else
-      { kdu_error e; e << "Unable to identify is data is signed."; }
-    }
+  // Identify if the data is signed
+  source_file->is_signed = true; // floats are always signed
+  if (t_class != H5T_FLOAT) { // TODO: When implement support for further
+    // classes. This will be extended.
+    int is_signed_h5 = H5Tget_sign(datatype);
+    if (is_signed_h5 == H5T_SGN_2)
+      source_file->is_signed = true;
+    else if (is_signed_h5 == H5T_SGN_NONE)
+      source_file->is_signed = false;
+    else
+      e << "Unable to identify is data is signed."; 
+  }
 
-    // Get the number of bytes that represent each sample
-    source_file->bytes_per_sample = H5Tget_size(datatype); 
-    if (source_file->bytes_per_sample == 0) 
-    { kdu_error e; e << "Unable to get sample bytes of dataset in HDF5 "
-      "file."; }
+  // Get the number of bytes that represent each sample
+  source_file->bytes_per_sample = H5Tget_size(datatype); 
+  if (source_file->bytes_per_sample == 0) 
+    e << "Unable to get sample bytes of dataset in HDF5 "
+      "file."; 
 
-      // Get the number of bits that represent each sample
-      source_file->precision = H5Tget_precision(datatype);
-      if (source_file->precision == 0) 
-      { kdu_error e; e << "Unable to get precision of dataset in HDF5 file."; }
-      else if (source_file->precision != 8 * source_file->bytes_per_sample)
-      { kdu_error e; e << "Padding in sample bytes. Handling for this is "
-        "unimplemented"; } 
+  // Get the number of bits that represent each sample
+  source_file->precision = H5Tget_precision(datatype);
+  if (source_file->precision == 0) 
+  { kdu_error e; e << "Unable to get precision of dataset in HDF5 file."; }
+  else if (source_file->precision != 8 * source_file->bytes_per_sample)
+    e << "Padding in sample bytes. Handling for this is "
+      "unimplemented"; 
 
-        // Check for forced precision
-        if (source_file->forced_prec > 0) {
-          source_file->precision = source_file->forced_prec;
-          source_file->bytes_per_sample = source_file->precision / 8;
-        }
+  // Check for forced precision
+  if (source_file->forced_prec > 0) {
+    source_file->precision = source_file->forced_prec;
+    source_file->bytes_per_sample = source_file->precision / 8;
+  }
 
-        // Get the dataspace of the the dataset
-        dataspace = H5Dget_space(dataset);
-        if (dataspace < 0) 
-        { kdu_error e; e << "Unable to get dataspace of dataset in HDF5 "
-          "file."; }
+  // Get the dataspace of the the dataset
+  dataspace = H5Dget_space(dataset);
+  if (dataspace < 0) 
+    e << "Unable to get dataspace of dataset in HDF5 file."; 
 
-          // Get the rank (number of dims)
-          cinfo.naxis = H5Sget_simple_extent_ndims(dataspace);
-          if (cinfo.naxis < 0) 
-          { kdu_error e; e << "Unable to get number of dimensions of the "
-            "dataspace of dataset in HDF5 file."; }
+  // Get the rank (number of dims)
+  source_file->crop.naxis = H5Sget_simple_extent_ndims(dataspace);
+  if (source_file->crop.naxis < 0) 
+    e << "Unable to get number of dimensions of the "
+      "dataspace of dataset in HDF5 file."; 
 
-            // Get the extent of the dimensions of the dataspace
-            hsize_t* dims_dataset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);     
-            if (H5Sget_simple_extent_dims(dataspace, dims_dataset, NULL) != cinfo.naxis)
-            { kdu_error e; e << "Unable to get dimensions of the dataspace of "
-              "dataset in HDF5 file."; }
+  // Get the extent of the dimensions of the dataspace
+  hsize_t* dims_dataset = 
+    (hsize_t*) malloc(sizeof(hsize_t) * source_file->crop.naxis);     
+  if (H5Sget_simple_extent_dims(dataspace, dims_dataset, NULL) != 
+      source_file->crop.naxis)
+    e << "Unable to get dimensions of the dataspace of "
+      "dataset in HDF5 file."; 
 
-              /* Input dimensions (FREQ,DEC,RA) as (x,y,z)
-               * Output  dimensions (RA,DEC,FREQ) as (x,y,z) */
-              cinfo.width = (unsigned long)dims_dataset[2];
-              cinfo.height = (unsigned long)dims_dataset[1];
-              cinfo.depth = (unsigned long)dims_dataset[0];
+  /* Input dimensions (FREQ,DEC,RA) as (x,y,z)
+   * Output  dimensions (RA,DEC,FREQ) as (x,y,z) */
+  source_file->crop.width = (unsigned long)dims_dataset[2];
+  source_file->crop.height = (unsigned long)dims_dataset[1];
+  source_file->crop.depth = (unsigned long)dims_dataset[0];
 
-              std::cout << "HDF5 image dimensions:\n"
-                "rank = " << (unsigned int)(cinfo.naxis) << "\n" << 
-                "rows = " << (unsigned int)(cinfo.height) << "\n" << 
-                "cols = " << (unsigned int)(cinfo.width) << "\n";  
-              free(dims_dataset);
+  std::cout << "HDF5 image dimensions:\n"
+    "rank = " << (unsigned int)(source_file->crop.naxis) << "\n" << 
+    "rows = " << (unsigned int)(source_file->crop.height) << "\n" << 
+    "cols = " << (unsigned int)(source_file->crop.width) << "\n";  
+  free(dims_dataset);
 
-              // Now we handle the cropping parameter
+  // Now we handle the cropping parameter
 
-              // Offset of cube to be encoded within the original file image
-              offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-              // Extent of each dimension of the cube to be encoded
-              extent = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
+  // Offset of cube to be encoded within the original file image
+  offset = (hsize_t*) malloc(sizeof(hsize_t) * source_file->crop.naxis);
+  // Extent of each dimension of the cube to be encoded
+  extent = (hsize_t*) malloc(sizeof(hsize_t) * source_file->crop.naxis);
 
-              if (source_file->crop.specified) {
-                if ((source_file->crop.x + source_file->crop.width) > cinfo.width)
-                { kdu_error e; e << "Requested input file cropping parameters are "
-                  "not compatible with actual image dimensions.  The cropping "
-                    "region would cross the right hand boundary of the image."; }
-                  if ((source_file->crop.y + source_file->crop.height) > cinfo.height)
-                  { kdu_error e; e << "Requested input file cropping parameters are "
-                    "not compatible with actual image dimensions. The cropping "
-                      "region would cross the the lower hand boundary of the image."; }
-                    offset[0] = source_file->crop.x; extent[0] = source_file->crop.width;         
-                    offset[1] = source_file->crop.y; extent[1] = source_file->crop.height;
-                    offset[2] = source_file->crop.z; extent[2] = 1;
-              }
-              else { // No cropping specified, default is the whole image
-                offset[0] = offset[1] = offset[2] = 0;
-                extent[0] = cinfo.width;
-                extent[1] = cinfo.height;
-                extent[2] = 1;
-              }
+  if (source_file->crop.specified) {
+    if ((source_file->crop.x + source_file->crop.width) > source_file->crop.width)
+    { kdu_error e; e << "Requested input file cropping parameters are "
+      "not compatible with actual image dimensions.  The cropping "
+        "region would cross the right hand boundary of the image."; }
+      if ((source_file->crop.y + source_file->crop.height) > source_file->crop.height)
+      { kdu_error e; e << "Requested input file cropping parameters are "
+        "not compatible with actual image dimensions. The cropping "
+          "region would cross the the lower hand boundary of the image."; }
+        offset[0] = source_file->crop.x; extent[0] = source_file->crop.width;         
+        offset[1] = source_file->crop.y; extent[1] = source_file->crop.height;
+        offset[2] = source_file->crop.z; extent[2] = 1;
+  }
+  else { // No cropping specified, default is the whole image
+    offset[0] = offset[1] = offset[2] = 0;
+    extent[0] = source_file->crop.width;
+    extent[1] = source_file->crop.height;
+    extent[2] = 1;
+  }
 
-              // Define the memory space that will be used by get
-              // Each call of get returns an image row. So memspace needs to be the size
-              // of a row
-              dims_mem = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-              for (int i = 0; i < cinfo.naxis; ++i)
-                dims_mem[i] = 1; // all the other dimensions are done one at a time
-              dims_mem[2] = extent[0]; // read in all the cols (i.e an entire row)
-              // remember in the z dimension in hyperslab
-              // defined by dims_mem[2] will be mapped to our
-              // output x dimension.
+  // Define the memory space that will be used by get
+  // Each call of get returns an image row. So memspace needs to be the size
+  // of a row
+  dims_mem = (hsize_t*) malloc(sizeof(hsize_t) * source_file->crop.naxis);
+  for (int i = 0; i < source_file->crop.naxis; ++i)
+    dims_mem[i] = 1; // all the other dimensions are done one at a time
+  dims_mem[2] = extent[0]; // read in all the cols (i.e an entire row)
+  // remember in the z dimension in hyperslab
+  // defined by dims_mem[2] will be mapped to our
+  // output x dimension.
 
-              memspace = H5Screate_simple(cinfo.naxis, dims_mem, NULL);
-              if (memspace < 0)
-              { kdu_error e; e << "Unable to create dataspace (memspace)."; }
+  memspace = H5Screate_simple(source_file->crop.naxis, dims_mem, NULL);
+  if (memspace < 0)
+    e << "Unable to create dataspace (memspace)."; 
 
-              // The offset where we place the hyperslab in memory is 0,0,0,...
-              // anything else would just be a waste of memory.
-              hsize_t* offset_mem = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-              for (int i = 0; i < cinfo.naxis; ++i)
-                offset_mem[i] = 0;
-              if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, offset_mem, NULL,
-                    dims_mem, NULL) < 0)
-              { kdu_error e; e << "Unable to create hyperslab in memory"; }
-              free(offset_mem);
+  // The offset where we place the hyperslab in memory is 0,0,0,...
+  // anything else would just be a waste of memory.
+  hsize_t* offset_mem = (hsize_t*) malloc(sizeof(hsize_t) * source_file->crop.naxis);
+  for (int i = 0; i < source_file->crop.naxis; ++i)
+    offset_mem[i] = 0;
+  if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, offset_mem, NULL,
+        dims_mem, NULL) < 0)
+    e << "Unable to create hyperslab in memory"; 
+  free(offset_mem);
 
-              offset_out = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
-              for (int i = 0; i < cinfo.naxis; ++i) {
-                offset_out[i] = offset[i];
-              }
-              if (cinfo.naxis > 3)
-                num_unread_rows = extent[1] * extent[2] * extent[3];
-              else if (cinfo.naxis == 3)
-                num_unread_rows = extent[1] * extent[2];
-              else
-                num_unread_rows = extent[1]; 
-              total_rows = num_unread_rows;
+  offset_out = (hsize_t*) malloc(sizeof(hsize_t) * source_file->crop.naxis);
+  for (int i = 0; i < source_file->crop.naxis; ++i) {
+    offset_out[i] = offset[i];
+  }
+  if (source_file->crop.naxis > 3)
+    num_unread_rows = extent[1] * extent[2] * extent[3];
+  else if (source_file->crop.naxis == 3)
+    num_unread_rows = extent[1] * extent[2];
+  else
+    num_unread_rows = extent[1]; 
+  total_rows = num_unread_rows;
 } 
 
 
@@ -376,6 +379,8 @@ void
  * bounds of the image from our current index in the cube. */
 {
   kdu_error e;
+  kdu_warning w;
+
   int width = source_file->crop.width; // Number of samples in the line
   dims_mem[1] = height;
 
@@ -387,45 +392,45 @@ void
   std::swap (offset_out[0], offset_out[2]);
   if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, offset_out, NULL, 
         dims_mem, NULL) < 0)
-  { kdu_error e; e << "Unable to select cropped hyperslab of dataset in"
-    "HDF5 file."; }
-    std::swap (offset_out[0], offset_out[2]);
+    e << "Unable to select cropped hyperslab of dataset in"
+      "HDF5 file."; 
+  std::swap (offset_out[0], offset_out[2]);
 
-    // TODO: extend to all types (don't have other test data at the moment.
-    switch (cinfo.t_class) {       
-      case H5T_FLOAT: { 
-        // We finally actually read the values from the HDF5 image.
-        float* buf_in = (float*) malloc(sizeof(float)*width);
+  // TODO: extend to all types (don't have other test data at the moment.
+  switch (t_class) {       
+    case H5T_FLOAT: { 
+      // We finally actually read the values from the HDF5 image.
+      float* buf_in = (float*) malloc(sizeof(float)*width);
 
-        if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
-              H5P_DEFAULT, buf_in) < 0)
+      if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
+            H5P_DEFAULT, buf_in) < 0)
         e << "Unable to read FLOAT HDF5 dataset."; 
 
-       // if (source_file->reversible)
-       //   convert_TFLOAT_to_ints(buf_in, buf, width, source_file->precision, 
-       //       true, source_file->float_minvals, source_file->float_maxvals, 
-       //       source_file->bytes_per_sample, 
-       //       source_file->raw_before, source_file->raw_after);
-       // else
-       //   convert_TFLOAT_to_floats(buf_in, buf, width, source_file->is_signed, 
-       //       source_file->float_minvals, source_file->float_maxvals, 
-       //       source_file->raw_before, source_file->raw_after);
-        free(buf_in);
-        break;
-      }
-      default: 
-        kdu_error e; e << "Unimplemented class type."; 
-        break; 
+      // if (source_file->reversible)
+      //   convert_TFLOAT_to_ints(buf_in, buf, width, source_file->precision, 
+      //       true, source_file->float_minvals, source_file->float_maxvals, 
+      //       source_file->bytes_per_sample, 
+      //       source_file->raw_before, source_file->raw_after);
+      // else
+      //   convert_TFLOAT_to_floats(buf_in, buf, width, source_file->is_signed, 
+      //       source_file->float_minvals, source_file->float_maxvals, 
+      //       source_file->raw_before, source_file->raw_after);
+      free(buf_in);
+      break;
     }
+    default: 
+      kdu_error e; e << "Unimplemented class type."; 
+      break; 
+  }
 
-    /* Incremement position in HDF5 file
-     * Indices represent: 0 col, 1 row */
-    offset_out[0] = offset[0]; // set col to beginning of next line
-    if (offset_out[1] == offset[1] + extent[1] - 1) // just read last row in frame
-      offset_out[1] = offset[1]; // set row to beginning of next frame
-    else 
-      offset_out[1] += height; // otherwise just go to next row
-    num_unread_rows -= height;
+  /* Incremement position in HDF5 file
+   * Indices represent: 0 col, 1 row */
+  offset_out[0] = offset[0]; // set col to beginning of next line
+  if (offset_out[1] == offset[1] + extent[1] - 1) // just read last row in frame
+    offset_out[1] = offset[1]; // set row to beginning of next frame
+  else 
+    offset_out[1] += height; // otherwise just go to next row
+  num_unread_rows -= height;
 }
 
 /*****************************************************************************/
