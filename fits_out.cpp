@@ -45,6 +45,8 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   dest_file->precision = 32;
   dest_file->reversible = false;
   dest_file->bytes_per_sample = 4;
+  bitpix = FLOAT_IMG;
+  naxis = 2; 
   num_unwritten_rows = 0;
 
   fpixel = new LONGLONG [naxis];
@@ -53,8 +55,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
   /* Retrieve and use varaibles related to the input JPX image */
 
-  bitpix = FLOAT_IMG;
-  naxis = 2; 
   long* naxes = new long [naxis];
   naxes[0] = dest_file->crop.width;
   naxes[1] = dest_file->crop.height;
@@ -108,7 +108,7 @@ fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file)
   std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
   std::cout << height << " " << dest_file->crop.width << std::endl;
 
-  fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
+  //fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
   if (status != 0)
     { kdu_error e; e << "FITS file terminated prematurely!"; }
   int anynul = 0;
