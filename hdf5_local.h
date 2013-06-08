@@ -78,7 +78,7 @@ class hdf5_in : public ska_source_file_base {
     ~hdf5_in();
     void read_header(jp2_family_tgt &tgt, kdu_args &args, 
         ska_source_file * const source_file);
-    void read_stripe(int height, kdu_byte *buf, 
+    void read_stripe(int height, float *buf, 
         ska_source_file * const source_file);
   private: // Members describing the organization of the HDF5 data
     hid_t file; // File handle for the HDF5 handle
@@ -90,6 +90,7 @@ class hdf5_in : public ska_source_file_base {
     hsize_t* dims_mem; // Dimensions of data stored in memory
     hsize_t* offset; // The offset of the dimensions of the HDF5 image that we're 
                      // converting.
+    hsize_t* offset_mem;
     hsize_t* offset_out; // Offset within the already selected hyperslab
     int t_class;
     // The extent of each of the dimensions of the hyperslab in the file. i.e. 
@@ -100,6 +101,7 @@ class hdf5_in : public ska_source_file_base {
    
     bool littlendian; // true if data order is littlendian
     int first_comp_idx;
+
     int num_unread_rows; // Always starts at `rows', even with cropping
     int total_rows; // Used for progress bar
   private: // Members which are affected by (or support) cropping
@@ -111,10 +113,11 @@ class hdf5_in : public ska_source_file_base {
 /*****************************************************************************/
 
 class hdf5_out : public ska_dest_file_base {
-  public: // Member functions ~hdf5_out();
-    void write_header(jp2_family_tgt &tgt, kdu_args &args,
+  public: // Member functions 
+    ~hdf5_out();
+    void write_header(jp2_family_src &src, kdu_args &args,
         ska_dest_file* const dest_file);      
-    void write_stripe(int height, kdu_byte *buf,
+    void write_stripe(int height, float *buf,
         ska_dest_file* const dest_file);
   private: // Data
     // Describes the HDF5 cube we are writing to
@@ -142,6 +145,6 @@ class hdf5_out : public ska_dest_file_base {
     int num_unwritten_rows;
     //--------------------------------------------------------------------------
   private: // Members which are affected by (or support) cropping
-    bool parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args);
-    void parse_hdf5_metadata(jp2_family_tgt &tgt, bool quiet);
+    bool parse_hdf5_parameters(jp2_family_src &src, kdu_args &args);
+    void parse_hdf5_metadata(jp2_family_src &src, bool quiet);
 };

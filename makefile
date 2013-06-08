@@ -37,8 +37,8 @@ all: $(ENC) $(DEC)
 $(ENC): $(COMPRESS) $(E_OBJS)
 	$(COMPILER) $(COMPRESS) -o $(ENC) $(E_OBJS) $(LIBS)
 
-#$(DEC): $(EXPAND) $(D_OBJS)
-#$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
+$(DEC): $(EXPAND) $(D_OBJS)
+	$(COMPILER) $(EXPAND) -o $(DEC) $(D_OBJS) $(LIBS) -DSKA_IMG_FORMATS=1
 
 ska_source.o: ska_source.cpp
 	$(COMPILER) -c ska_source.cpp $(LIBS) -o ska_source.o 

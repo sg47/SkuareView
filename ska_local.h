@@ -4,6 +4,8 @@
 #include <fstream>
 #include "kdu_args.h"
 #include "jp2.h"
+//testing includes
+#include <iostream>
 
 /* Specifies the cropping of the input hdf5 file. Currently only 1 plane
  * is specified. Previously we had handled the 3rd dimension with components
@@ -42,7 +44,7 @@ class ska_source_file_base {
      * our images.  */
     virtual void read_header(jp2_family_tgt &tgt, kdu_args &args,
         ska_source_file* const source_file) = 0;
-    virtual void read_stripe(int height, kdu_byte *buf, 
+    virtual void read_stripe(int height, float *buf, 
         ska_source_file* const source_file) = 0;
 };
 
@@ -57,13 +59,17 @@ class ska_source_file {
       bytes_per_sample=1;
       precision=8;
       is_signed=false;
+      reversible=false;
+      float_minvals = -0.5;
+      float_maxvals = 0.5;
     }
     ~ska_source_file() {
       if (fname != NULL) delete[] fname;
       if (fp != NULL) fclose(fp);
+      std::cout << "did that go ok?" << std::endl;
     }
     void read_header(jp2_family_tgt &tgt, kdu_args &args);
-    void read_stripe(int height, kdu_byte *buf);
+    void read_stripe(int height, float *buf);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
     void parse_ska_args(jp2_family_tgt &tgt, kdu_args &args);
@@ -96,9 +102,9 @@ class ska_dest_file_base {
      * by the SKA to the destination jpeg2000 file. We also require additional
      * arguments not offered by the Kakadu library so that we can richly encode
      * our images.  */
-    virtual void write_header(jp2_family_tgt &tgt, kdu_args &args,
+    virtual void write_header(jp2_family_src &src, kdu_args &args,
         ska_dest_file* const dest_file) = 0;
-    virtual void write_stripe(int height, kdu_byte *buf, 
+    virtual void write_stripe(int height, float *buf, 
         ska_dest_file* const dest_file) = 0;
 };
 
@@ -114,16 +120,17 @@ class ska_dest_file {
       precision=8;
       is_signed=false;
       next=NULL;
+      reversible=false;
     }
     ~ska_dest_file() {
       if (fname != NULL) delete[] fname;
       if (fp != NULL) fclose(fp);
     }
-    void write_header(jp2_family_tgt &tgt, kdu_args &args);
-    void write_stripe(int height, kdu_byte *buf);
+    void write_header(jp2_family_src &src, kdu_args &args);
+    void write_stripe(int height, float *buf);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
-    void parse_ska_args(jp2_family_tgt &tgt, kdu_args &args);
+    void parse_ska_args(jp2_family_src &src, kdu_args &args);
   private: // Private data
     class ska_dest_file_base *out;
   public: // Data
@@ -139,7 +146,6 @@ class ska_dest_file {
     cropping crop; // cropping specified of the JP2 dimensions
     double samples_min, samples_max; // min/max values of all samples
     bool reversible; // reversible compression
-    int num_unwritten_rows;
 
     //TODO
     /* While multiple files can be accepted as arguments, currently the

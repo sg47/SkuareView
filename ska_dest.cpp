@@ -1,20 +1,27 @@
 #include "ska_local.h"
 #include "hdf5_local.h"
+#include "fits_local.h"
 
 /*****************************************************************************/
 /*                      ska_dest_file::write_header                         */
 /*****************************************************************************/
 
 void
-ska_dest_file::write_header(jp2_family_tgt &tgt, kdu_args &args) 
+ska_dest_file::write_header(jp2_family_src &src, kdu_args &args) 
 {
-  parse_ska_args(tgt, args);
+  parse_ska_args(src, args);
   const char *suffix;
   out = NULL;
   if ((suffix = strchr(fname, '.')) != NULL) {
     if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0)) {
-      out = new hdf5_out();
-      out->write_header(tgt, args, this);
+      //out = new hdf5_out();
+      //out->write_header(src, args, this);
+      kdu_error e; 
+      e << "hdf5 out not ported yet!";
+    }
+    else if ((strcmp(suffix+1,"fits")==0) || (strcmp(suffix+1,"FITS")==0)) {
+      out = new fits_out();
+      out->write_header(src, args, this);
     }
   }
   if (out == NULL)
@@ -28,7 +35,7 @@ ska_dest_file::write_header(jp2_family_tgt &tgt, kdu_args &args)
 /*****************************************************************************/
 
 void
-ska_dest_file::write_stripe(int height, kdu_byte *buf)
+ska_dest_file::write_stripe(int height, float *buf)
 {
   // "this" is passed as a method of mimicing inheritance
   // the reason why have to do it this way is because "kdu_buffered_compress"
@@ -43,7 +50,7 @@ ska_dest_file::write_stripe(int height, kdu_byte *buf)
 /*****************************************************************************/
 
 void
-  ska_dest_file::parse_ska_args(jp2_family_tgt &tgt, kdu_args &args)
+  ska_dest_file::parse_ska_args(jp2_family_src &src, kdu_args &args)
 {
   //TODO: read JP2 header
 }

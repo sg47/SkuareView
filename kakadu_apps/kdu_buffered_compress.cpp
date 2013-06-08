@@ -424,15 +424,10 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     int &preferred_min_stripe_height,
     int &absolute_max_stripe_height, int &flush_period,
     int &num_threads, int &double_buffering_height,
-    bool &cpu)
+    bool &cpu, jp2_family_tgt jp2_ultimate_tgt)
 /* Parses all command line arguments whose names include a dash.  Returns
    a list of open input files. */
 {
-  std::cout << "p0" << std::endl;
-  kdu_error e;
-  kdu_warning w;
-  std::cout << "p0.1" << std::endl;
-
   if ((args.get_first() == NULL) || (args.find("-u") != NULL))
     print_usage(args.get_prog_name());
   if (args.find("-usage") != NULL)
@@ -450,9 +445,7 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
   double_buffering_height = 0; // i.e., no double buffering
   cpu = false;
   bool little_endian = false;
-  std::cout << "p1" << std::endl;
   ska_source_file* ifile = new ska_source_file ();
-  std::cout << "p2" << std::endl;
 
   if (args.find("-o") != NULL) {
     const char *string = args.advance();
@@ -463,7 +456,7 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     args.advance();
   }
   else
-    e << "You must supply an output file name.";
+    { kdu_error e; e << "You must supply an output file name."; }
 
   if (args.find("-little_endian") != NULL) {
     little_endian = true;
@@ -474,7 +467,8 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     char *string = args.advance();
     if ((string == NULL) || (sscanf(string,"%d",&num_threads) != 1) ||
         (num_threads < 0))
-      e << "\"-num_threads\" argument requires a non-negative integer."; 
+      { kdu_error e; e << "\"-num_threads\" argument requires a non-negative "
+        "integer."; }
     args.advance();
   }
   else if ((num_threads = kdu_get_num_processors()) < 2)
@@ -482,16 +476,16 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
 
   if (args.find("-double_buffering") != NULL) {
     if (num_threads == 0)
-      e << "\"-double_buffering\" may only be used with "
-        "a non-zero `-num_threads' value."; 
+      { kdu_error e; e << "\"-double_buffering\" may only be used with " 
+        "a non-zero `-num_threads' value."; }
     char *string = args.advance();
     if ((string == NULL) ||
         (sscanf(string,"%d",&double_buffering_height) != 1) ||
         (double_buffering_height < 0))
-      e << "\"-double_buffering\" argument requires a "
+      { kdu_error e; e << "\"-double_buffering\" argument requires a "
         "positive integer, specifying the number of rows from each "
         "component which are to be double buffered, or else 0 (see "
-        "`-usage' statement)."; 
+        "`-usage' statement)."; }
     args.advance();
   }
   else if (num_threads > 1)
@@ -507,8 +501,8 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     if ((string == NULL) ||
         (sscanf(string,"%d",&preferred_min_stripe_height) != 1) ||
         (preferred_min_stripe_height < 1))
-      e << "\"-min_height\" argument requires a positive "
-        "integer parameter."; 
+      { kdu_error e; e << "\"-min_height\" argument requires a positive "
+        "integer parameter."; }
     args.advance();
   }
 
@@ -517,16 +511,16 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     if ((string == NULL) ||
         (sscanf(string,"%d",&absolute_max_stripe_height) != 1) ||
         (absolute_max_stripe_height < preferred_min_stripe_height))
-      e << "\"-max_height\" argument requires a positive "
+      { kdu_error e; e << "\"-max_height\" argument requires a positive "
         "integer parameter, no smaller than the value associated with the "
-        "`-min_height' argument."; 
+        "`-min_height' argument."; }
     args.advance();
   }
 
   if (args.find("-rate") != NULL) {
     const char *string = args.advance();
     if (string == NULL)
-      e << "\"-rate\" argument requires a parameter string!"; 
+      { kdu_error e; e << "\"-rate\" argument requires a parameter string!"; }
     bool valid = false;
     if ((*string == '-') && (string[1] == ',') &&
         (sscanf(string+2,"%f",&min_rate) == 1) && (min_rate > 0.0F))
@@ -539,13 +533,13 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     else if (sscanf(string,"%f",&max_rate) == 1)
       valid = true;
     if (!valid)
-      e << "\"-rate\" argument has an invalid parameter "
+      { kdu_error e; e << "\"-rate\" argument has an invalid parameter "
         "string; you must specify either one or two rate tokens, "
         "corresponding to maximum and minimum bit-rates (in order), over "
         "which to allocate the quality layers.  The maximum rate spec may "
         "be replaced by a '-' character, meaning use all available bits.  "
         "The minimum rate spec, if missing, will be automatically created.  "
-        "Both parameters must be strictly positive if supplied."; 
+        "Both parameters must be strictly positive if supplied."; }
     args.advance();
   }
 
@@ -553,8 +547,8 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     char *string = args.advance();
     if ((string == NULL) || (sscanf(string,"%lf",&rate_tolerance) != 1) ||
         (rate_tolerance < 0.0) || (rate_tolerance > 50.0))
-      e << "\"-tolerance\" argument requires a real-valued "
-        "parameter (percentage) in the range 0 to 50."; 
+      { kdu_error e; e << "\"-tolerance\" argument requires a real-valued "
+        "parameter (percentage) in the range 0 to 50."; }
     rate_tolerance *= 0.01; // Convert from percentage to a fraction
     args.advance();
   }
@@ -563,10 +557,10 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     char *string = args.advance();
     if ((string == NULL) || (sscanf(string,"%d",&flush_period) != 1) ||
         (flush_period < 128))
-      e << "\"-flush_period\" argument requires a positive "
+      { kdu_error e; e << "\"-flush_period\" argument requires a positive "
         "integer, no smaller than 128.  Typical values will generally be "
         "in the thousands; incremental flushing has no real benefits, "
-        "except when the image is large."; 
+        "except when the image is large."; }
     args.advance();
   }
 
@@ -578,16 +572,19 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
     ifile->fname = new char[strlen(string)+1];
     strcpy(ifile->fname,string);
     if ((ifile->fp = fopen(ifile->fname,"rb")) == NULL)
-      e << "Unable to open input file, \"" << ifile->fname << "\".";
+      { kdu_error e; e << "Unable to open input file, \"" 
+        << ifile->fname << "\"."; }
     args.advance();
   }
   else
-    e << "You must supply an output file name.";
+    { kdu_error e; e << "You must supply an output file name."; }
 
   if (ifile == NULL)
-    e << "You must supply an input file"; 
+    { kdu_error e; e << "You must supply an input file"; }
 
-  std::cout << "p3" << std::endl;
+  std::cout << "reading header" << std::endl;
+  ifile->read_header(jp2_ultimate_tgt, args); 
+  std::cout << "header read!" << std::endl;
   return ifile;
 }
 
@@ -626,9 +623,6 @@ check_jp2_suffix(const char *fname)
 
 int main(int argc, char *argv[])
 {
-  kdu_error e;
-  kdu_warning w;
-
   kdu_customize_warnings(&pretty_cout);
   kdu_customize_errors(&pretty_cerr);
   kdu_args args(argc,argv,"-s");
@@ -640,19 +634,20 @@ int main(int argc, char *argv[])
   int preferred_min_stripe_height, absolute_max_stripe_height;
   int num_threads, env_dbuf_height, flush_period;
   bool cpu;
-  std::cout << "1" << std::endl;
-  ska_source_file *ifile =
-    parse_simple_args(args,ofname,max_rate,min_rate,rate_tolerance,
-        preferred_min_stripe_height,
-        absolute_max_stripe_height,flush_period,
-        num_threads,env_dbuf_height,cpu);
-  std::cout << "2" << std::endl;
-
-  // Create appropriate output file
   kdu_compressed_target *output = NULL;
   kdu_simple_file_target file_out;
   jp2_family_tgt jp2_ultimate_tgt;
   jp2_target jp2_out;
+  std::cout << "constructing ska_source_file" << std::endl;
+  ska_source_file *ifile =
+    parse_simple_args(args,ofname,max_rate,min_rate,rate_tolerance,
+        preferred_min_stripe_height,
+        absolute_max_stripe_height,flush_period,
+        num_threads,env_dbuf_height,cpu,jp2_ultimate_tgt);
+  std::cout << "constructed!" << std::endl;
+
+  std::cout << "creating output file" << std::endl;
+  // Create appropriate output file
   if (check_jp2_suffix(ofname)) {
     output = &jp2_out;
     jp2_ultimate_tgt.open(ofname);
@@ -663,6 +658,7 @@ int main(int argc, char *argv[])
     file_out.open(ofname);
   }
   delete[] ofname;
+  std::cout << "output file created" << std::endl;
 
   // Collect any dimensioning/tiling parameters supplied on the command line;
   // need dimensions for raw files, if any.
@@ -703,27 +699,30 @@ int main(int argc, char *argv[])
   // source files).
   int m_components=0;  siz.get(Mcomponents,0,0,m_components);
   kdu_long total_samples=0, total_pixels=0;
-  int n, num_components=0;
+  int n = 0, num_components=0;
 
-  ifile->read_header(jp2_ultimate_tgt, args); 
   siz.set(Sdims,num_components,0,ifile->crop.height);
   siz.set(Sdims,num_components,1,ifile->crop.width);
   if (m_components > 0) {
-    siz.set(Msigned,num_components,0,ifile->is_signed=false);
-    siz.set(Mprecision,num_components,0,ifile->precision=8);
+    siz.set(Msigned,num_components,0,ifile->is_signed);
+    siz.set(Mprecision,num_components,0,ifile->precision);
   }
   else {
-    siz.set(Ssigned,num_components,0,ifile->is_signed=false);
-    siz.set(Sprecision,num_components,0,ifile->precision=8);
+    siz.set(Ssigned,num_components,0,ifile->is_signed);
+    siz.set(Sprecision,num_components,0,ifile->precision);
   }
+  std::cout << "SIZ: signed and precision set" << std::endl;
   kdu_long samples = ifile->crop.width; samples *= ifile->crop.height;
   total_samples += samples;
   total_pixels = (samples > total_pixels)?samples:total_pixels;
 
   int c_components=0;
   if (!siz.get(Scomponents,0,0,c_components))
-    siz.set(Scomponents,0,0,c_components=num_components);
+    siz.set(Scomponents,0,0,c_components=++num_components);
+  std::cout << "SIZ: finalizing all" << std::endl;
   siz.finalize_all();
+  std::cout << "SIZ: finalizing all complete" << std::endl;
+  std::cout << num_components << std::endl;
 
   // Start the timer
   kdu_clock timer;
@@ -735,8 +734,9 @@ int main(int argc, char *argv[])
   for (string=args.get_first(); string != NULL; )
     string = args.advance(codestream.access_siz()->parse_string(string));
   if (args.show_unrecognized(pretty_cout) != 0)
-    e << "There were unrecognized command line arguments!"; 
+    { kdu_error e; e << "There were unrecognized command line arguments!"; }
   codestream.access_siz()->finalize_all();
+  std::cout << "codestream finalized" << std::endl;
 
   // Write the JP2 header, if necessary
   if (jp2_ultimate_tgt.exists()) { 
@@ -761,6 +761,7 @@ int main(int argc, char *argv[])
   }
 
   // Determine the desired cumulative layer sizes
+  std::cout << "layers" << std::endl;
   int num_layer_sizes;
   kdu_params *cod = codestream.access_siz()->access_cluster(COD_params);
   if (!(cod->get(Clayers,0,0,num_layer_sizes) && (num_layer_sizes > 0)))
@@ -768,10 +769,10 @@ int main(int argc, char *argv[])
   kdu_long *layer_sizes = new kdu_long[num_layer_sizes];
   memset(layer_sizes,0,sizeof(kdu_long)*num_layer_sizes);
   if ((min_rate > 0.0F) && (num_layer_sizes < 2))
-    e << "You have specified two bit-rates using the `-rate' "
+    { kdu_error e; e << "You have specified two bit-rates using the `-rate' "
       "argument, but only one quality layer.  Use `Clayers' to specify more "
       "layers -- they will be spaced logarithmically between the min and max "
-      "bit-rates."; 
+      "bit-rates."; }
   if (min_rate > 0.0F)
     layer_sizes[0] = (kdu_long)(total_pixels*min_rate*0.125F);
   if (max_rate > 0.0F)
@@ -818,7 +819,7 @@ int main(int argc, char *argv[])
   int *precisions = new int[num_components];
   int *stripe_heights = new int[num_components];
   int *max_stripe_heights = new int[num_components];
-  kdu_byte **stripe_bufs = new kdu_byte *[num_components];
+  precisions[n] = ifile->precision;
 
   kdu_stripe_compressor compressor;
   compressor.start(codestream,num_layer_sizes,layer_sizes,NULL,0,false,
@@ -827,25 +828,39 @@ int main(int argc, char *argv[])
   compressor.get_recommended_stripe_heights(preferred_min_stripe_height,
       absolute_max_stripe_height,
       stripe_heights,max_stripe_heights);
-  if ((stripe_bufs[n] =
-        new kdu_byte[ifile->crop.width*max_stripe_heights[n]])==NULL)
-    e << "Insufficient memory to allocate stripe buffers."; 
-  else
-    precisions[n] = ifile->precision;
 
-  // Now for the incremental processing
-  do {
-    compressor.get_recommended_stripe_heights(preferred_min_stripe_height,
-        absolute_max_stripe_height,
-        stripe_heights,NULL);
-    if (cpu)
-      processing_time += timer.get_ellapsed_seconds();
-    assert(stripe_heights[n] <= max_stripe_heights[n]);
-    ifile->read_stripe(stripe_heights[n],stripe_bufs[n]);
-    if (cpu)
-      reading_time += timer.get_ellapsed_seconds();
-  } while (compressor.push_stripe(stripe_bufs,stripe_heights,NULL,NULL,
-        precisions,flush_period));
+  if (ifile->reversible) {
+
+  }
+  else {
+    float **stripe_bufs = new float *[num_components];
+    bool stripes_signed = true;
+
+    // Now for the incremental processing
+    do {
+      compressor.get_recommended_stripe_heights(preferred_min_stripe_height,
+          absolute_max_stripe_height,
+          stripe_heights,NULL);
+      if (cpu)
+        processing_time += timer.get_ellapsed_seconds();
+      assert(stripe_heights[n] <= max_stripe_heights[n]);
+      stripe_bufs[n] = new float[stripe_heights[n]*ifile->crop.width];
+
+      ifile->read_stripe(stripe_heights[n],stripe_bufs[n]);
+
+      for(int i = 0; i < stripe_heights[n] * ifile->crop.width; ++i)
+        std::cout << stripe_bufs[n][i] << " ";
+      std::cout << std::endl;
+
+      if (cpu)
+        reading_time += timer.get_ellapsed_seconds();
+    } while (compressor.push_stripe(stripe_bufs,stripe_heights,NULL,NULL,
+          NULL,NULL,flush_period));
+
+    for (n=0; n < num_components; n++)
+      delete[] stripe_bufs[n];
+    delete[] stripe_bufs;
+  }
 
   if (cpu)
   { // Report processing time
@@ -876,9 +891,6 @@ int main(int argc, char *argv[])
   output->close();
   if (jp2_ultimate_tgt.exists())
     jp2_ultimate_tgt.close();
-  for (n=0; n < num_components; n++)
-    delete[] stripe_bufs[n];
-  delete[] stripe_bufs;
   delete[] precisions;
   delete[] stripe_heights;
   delete[] max_stripe_heights;

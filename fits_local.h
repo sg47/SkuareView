@@ -172,7 +172,7 @@ class fits_in : public ska_source_file_base {
     ~fits_in();
     void read_header(jp2_family_tgt &tgt, kdu_args &args,
         ska_source_file* const source_file);
-    void read_stripe(int height, kdu_byte *buf,
+    void read_stripe(int height, float *buf,
         ska_source_file* const source_file);
   private: // Members describing the organization of the FITS data
     fitsfile *in;     //pointer to open FITS image
@@ -189,6 +189,8 @@ class fits_in : public ska_source_file_base {
     int bitpix;
     int type;
     int naxis;
+
+    int num_unread_rows;
 };
 
 /*****************************************************************************/
@@ -198,24 +200,21 @@ class fits_in : public ska_source_file_base {
 class fits_out : public ska_dest_file_base {
   public: // Public functions
     ~fits_out();
-    void write_header(jp2_family_tgt &tgt, kdu_args &args,
+    void write_header(jp2_family_src &src, kdu_args &args,
         ska_dest_file* const dest_file);
-    void write_stripe(int height, kdu_byte *buf,
+    void write_stripe(int height, float *buf,
         ska_dest_file* const dest_file);
   private: // Private functions
     bool parse_fits_parameters(kdu_args &args);
-  private: 
+  private: // FITS file descriptions 
     fitsfile *out;     //pointer to open FITS image
     int status;    // returned status of FITS functions
-    fits_param fits;  // specific FITS parameters
     LONGLONG *fpixel; // array used by CFITSIO to specify starting pixel to read from.
-    LONGLONG current_frame; // holds the currently read fream
     int nkeys;  //fits keywords
-    char keyname[FLEN_CARD];  //fits
-    char keyvalue[FLEN_CARD];  //fits
-    char keycomment[FLEN_CARD];  //fits
     int scale;
     int bitpix;
     int type;
     int naxis;
+  private: // Writing descriptions
+    int num_unwritten_rows;
 };

@@ -85,7 +85,7 @@ convert_floats_to_TFLOAT(kdu_sample32 *src, float *dest, int num,
 {
   float scale, factor, offset=0.0;
   if (src == NULL)
-  {kdu_error e; e << "16 bit irreversible compression is unimplemented";}
+    { kdu_error e; e << "16 bit irreversible compression is unimplemented"; }
 
   /* The images captured in radio astronomy have extremely dynamic range of
    * values. As such a linear scaling will often result an over compressed 
@@ -211,16 +211,14 @@ str_split(const std::string &s, char delim)
 /* ========================================================================= */
 
 /*****************************************************************************/
-/*                           hdf5_out::read_header                           */
+/*                           hdf5_out::write_header                           */
 /*****************************************************************************/
 
 void
-hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
+hdf5_out::write_header(jp2_family_src& src, kdu_args& args,
     ska_dest_file* const dest_file)
 {
-  kdu_error e;
-  kdu_warning w;
-  dest_file->num_unwritten_rows = 0;
+  num_unwritten_rows = 0;
 
   // default min and max
   dest_file->samples_min = -0.5;
@@ -230,18 +228,18 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
   parse_hdf5_metadata(dims, quiet);
 
   if (!parse_hdf5_parameters(args, dims)) 
-    kdu_error e; e << "Unable to parse HDF5 parameters";
+    { kdu_error e; e << "Unable to parse HDF5 parameters"; }
 
   // Find max image components
   first_comp_idx = next_comp_idx;
   num_components = dims.get_num_components() - first_comp_idx;
   if (num_components <= 0)
-    e << "Output image files require more image components "
-      "(or mapped colour channels) than are available!";
+    { kdu_error e; e << "Output image files require more image components "
+      "(or mapped colour channels) than are available!"; }
 
   t_class = H5T_FLOAT;  // ICRAR's hdf5 dataset is stored as a float
-  cinfo.naxis = 3; // ICRAR's hdf5 dataset currently has 3 dimensions
-  cinfo.height = dims.get_height(first_comp_idx); // rows
+  naxis = 3; // ICRAR's hdf5 dataset currently has 3 dimensions
+  dest_file->height = dims.get_height(first_comp_idx); // rows
   cinfo.width = dims.get_width(first_comp_idx); // cols
   cinfo.depth = num_components; // We use components currently as frames
 
@@ -258,9 +256,9 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
   else if (precision <= 32)
     dest_file->bytes_per_sample = 4;
   else 
-    e << "Cannot write the output with sample precision "
+    { kdu_error e; e << "Cannot write the output with sample precision "
       "in excess of 32 bits per sample. You may like to use the \"-fprec"
-      "\" option to force the writing to a different precision."; 
+      "\" option to force the writing to a different precision."; }
 
 
   /* Setup the variables related to the output HDF5 image */
@@ -284,48 +282,48 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
   // Create the dataspace
   dataspace = H5Screate_simple(cinfo.naxis, dest_dims, NULL); 
   if (dataspace < 0)
-    e << "Unable to create dataspace for output HDF5 image.";
+    { kdu_error e; e << "Unable to create dataspace for output HDF5 image."; }
 
   // Create the new file
   file = H5Fcreate(fname, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
   if (file < 0)
-    e << "Unable to create output HDF5 image file.";
+    { kdu_error e; e << "Unable to create output HDF5 image file."; }
 
   // Create the properties in order to create the dataset
   cparms = H5Pcreate(H5P_DATASET_CREATE);
   if (cparms < 0)
-    e << "Unable to create dataset properties for output "
-      "HDF5 image."; 
+    { kdu_error e; e << "Unable to create dataset properties for output "
+      "HDF5 image."; }
   if (H5Pset_chunk(cparms, cinfo.naxis, dims_mem) < 0)
-    e << "Unable to set chunk for dataset."; 
+    { kdu_error e; e << "Unable to set chunk for dataset."; }
   int fill_value = 0;
   if (H5Pset_fill_value(cparms, H5T_NATIVE_FLOAT, &fill_value) < 0)
-    e << "Unable to set fill value for dataset."; 
+    { kdu_error e; e << "Unable to set fill value for dataset."; }
 
   // Create the dataset
   dataset = H5Dcreate2(file, DATASET_NAME, H5T_NATIVE_FLOAT, dataspace,
       H5P_DEFAULT, cparms, H5P_DEFAULT);
   if (dataset < 0)
-    e << "Unable to create dataset for output HDF5 image."; 
+    { kdu_error e; e << "Unable to create dataset for output HDF5 image."; }
 
   // Set the extent of the dataset
   if (H5Dset_extent(dataset, dest_dims) < 0)
-    kdu_error e; e << "Unable to set extent of dataset.";
+    { kdu_error e; e << "Unable to set extent of dataset."; }
 
   // Get the filespace
   filespace = H5Dget_space(dataset);
   if (filespace < 0)
-    e << "Unable to get filespace for output HDF5 image."; 
+    { kdu_error e; e << "Unable to get filespace for output HDF5 image."; }
 
   // Create the memory space to use in put
   memspace = H5Screate_simple(cinfo.naxis, dims_mem, NULL);
   if (memspace < 0)
-    e << "Unable to create memory space for HDF5 image."; 
+    { kdu_error e; e << "Unable to create memory space for HDF5 image."; }
 
   offset = (hsize_t*) malloc(sizeof(hsize_t) * cinfo.naxis);
   offset[0] = offset[1] = offset[2] = 0;
 
-  num_unwritten_rows = cinfo.height;
+  num_unwritten_rows = dest_file->crop.height;
 }
 
 /*****************************************************************************/
@@ -334,12 +332,9 @@ hdf5_out::write_header(jp2_family_tgt& tgt, kdu_args& args,
 
 hdf5_out::~hdf5_out()
 {
-  kdu_warning w;
-  kdu_error e;
-
   if ((num_unwritten_rows > 0) || (incomplete_lines != NULL))
-    w << "Not all rows of the image component " << 
-    first_comp_idx << " were completed!";
+    { kdu_warning w; w << "Not all rows of the image component " << 
+      first_comp_idx << " were completed!"; }
 
     image_line_buf *tmp;
     while ((tmp=incomplete_lines) != NULL)
@@ -353,7 +348,7 @@ hdf5_out::~hdf5_out()
     free(dest_dims);
 
     if (H5Dclose(dataset) < 0 || H5Sclose(dataspace) < 0 || H5Fclose(file) < 0)
-    e << "Unable to cleanly close HDF5 file.";
+    { kdu_error e; e << "Unable to cleanly close HDF5 file.";}
 }
 
 /*****************************************************************************/
@@ -361,14 +356,10 @@ hdf5_out::~hdf5_out()
 /*****************************************************************************/
 
 void
-hdf5_out::write_stripe(int height, kdu_byte *buf, 
-    ska_dest_file* const dest_file)
+hdf5_out::write_stripe(int height, float *buf, ska_dest_file* const dest_file)
 {
-  kdu_warning w;
-  kdu_error e;
-
   if (num_unwritten_rows == 0)
-    e << "Attempting to write too many lines to image.";
+    { kdu_error e; e << "Attempting to write too many lines to image."; }
 
   // Dimensions of hyperslab selection will be row by row
   // Also used aas chunk dimensions
@@ -380,18 +371,18 @@ hdf5_out::write_stripe(int height, kdu_byte *buf,
   // Select the hyperslab (in this case row) that we are going to write to
   if (H5Sselect_hyperslab(filespace, H5S_SELECT_SET, offset, NULL,
         dims_mem, NULL) < 0)
-    e << "Unable to select hyperslab within HDF5 dataset."; 
+    { kdu_error e; e << "Unable to select hyperslab within HDF5 dataset."; }
 
   buf = malloc(4 * width); 
   if (dest_file->reversible) {
     if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
           H5P_DEFAULT, buf) < 0)
-      e << "Unable to write to HDF5 file."; 
+      { kdu_error e; e << "Unable to write to HDF5 file."; }
   }
   else {
     if (H5Dwrite(dataset, H5T_NATIVE_FLOAT, memspace, filespace,
           H5P_DEFAULT, buf) < 0)
-      e << "Unable to write to HDF5 file."; 
+      { kdu_error e; e << "Unable to write to HDF5 file."; }
   }
   free(buf);
 
@@ -405,9 +396,8 @@ hdf5_out::write_stripe(int height, kdu_byte *buf,
 /*****************************************************************************/
 
 bool 
-hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args) 
+hdf5_out::parse_hdf5_parameters(jp2_family_src &src, kdu_args &args) 
 {
-  kdu_error e;
   const char* string;
 
   if (args.get_first() != NULL) {
@@ -428,10 +418,10 @@ hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
           succ = false;
 
         if (!succ)
-         e << "\"-minmax\" argument contains "
+         { kdu_error e; e << "\"-minmax\" argument contains "
           "malformed specification. Expected to find two comma-" 
           "separated float numbers, enclosed by curly braces. "
-          "Example: -minmax {-1.0,1.0}";
+          "Example: -minmax {-1.0,1.0}"; }
       }
       args.advance();
     }
@@ -452,7 +442,7 @@ hdf5_out::parse_hdf5_parameters(jp2_family_tgt &tgt, kdu_args &args)
 /*****************************************************************************/
 
 void 
-hdf5_out::parse_hdf5_metadata(jp2_family_tgt &tgt, bool quiet)
+hdf5_out::parse_hdf5_metadata(jp2_family_src &src, bool quiet)
 {
   // Current structure of metadata is one box, with a comma-seperated
   // dictionary.

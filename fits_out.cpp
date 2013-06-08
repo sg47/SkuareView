@@ -36,27 +36,47 @@
 /*****************************************************************************/
 
 void
-fits_out::write_header(jp2_family_tgt &tgt, kdu_args &args, 
+fits_out::write_header(jp2_family_src &src, kdu_args &args, 
     ska_dest_file* const dest_file)
 {
-  kdu_error e;
   // Initialize state information in case we have to clean up prematurely
-  dest_file->is_signed = NULL;
-  dest_file->precision = NULL;
-  dest_file->num_unwritten_rows = 0;
+  //TODO: make dynamic
+  dest_file->is_signed = true;
+  dest_file->precision = 32;
+  dest_file->reversible = false;
+  dest_file->bytes_per_sample = 4;
+  num_unwritten_rows = 0;
 
+  fpixel = new LONGLONG [naxis];
+  fpixel[0] = dest_file->crop.x+1;
+  fpixel[1] = dest_file->crop.y+1;
+  std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
   /* Retrieve and use varaibles related to the input JPX image */
 
   bitpix = FLOAT_IMG;
-  naxis = 2;
+  naxis = 2; 
+  long* naxes = new long [naxis];
+  naxes[0] = dest_file->crop.width;
+  naxes[1] = dest_file->crop.height;
 
   // Create destination FITS file
   fits_create_file(&out, dest_file->fname, &status);
+  if (status != 0)
+    { kdu_error e; e << "Unable to create FITS file."; }
 
-  long int* naxes = (long int*) malloc(sizeof(long int) * naxis);
+  int iomode = READWRITE;
+  fits_file_mode(out, &iomode, &status);
+  if (status != 0)
+    { kdu_error e; e << "Unable to write to FITS file."; }
+
+  std::cout << naxis << std::endl;
+  std::cout << naxes[0] << " " << naxes[1] << std::endl;
   fits_create_img(out, bitpix, naxis, naxes, &status);
-  dest_file->crop.width = naxes[0];
-  dest_file->crop.height = naxes[1];
+  if (status != 0)
+    { kdu_error e; e << "Unable to create image FITS file."; }
+
+  num_unwritten_rows = dest_file->crop.height;
+  delete[] naxes;
 }
 
 /*****************************************************************************/
@@ -65,44 +85,34 @@ fits_out::write_header(jp2_family_tgt &tgt, kdu_args &args,
 
 fits_out::~fits_out()
 {
-  kdu_warning w;
-  kdu_error e;
+  if (num_unwritten_rows > 0) 
+    { kdu_error e; e << "Not all rows were written to file."; }
+
+  delete[] fpixel;
 
   fits_close_file(out, &status);
   if (status != 0)
-    e << "Unable to close FITS image!";
+    { kdu_error e; e << "Unable to close FITS image!"; }
+
 }
 
 /*****************************************************************************/
-/*                               fits_out::put                               */
+/*                           fits_out::write_stripe                          */
 /*****************************************************************************/
 
 void
-fits_out::write_stripe(int height, kdu_byte* buf, 
-    ska_dest_file* const dest_file)
+fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file)
 {
-  kdu_error e;
-  kdu_warning w;
+  int stripe_elements = dest_file->crop.width * height;
+  // "buf" will be of size "stripe_elements * bytes_per_sample"
 
-  int anynul=0;
-  unsigned char nulval=0;
-
-  switch (bitpix) { 
-    case FLOAT_IMG:  
-      {
-        //fits_write_pixll(out, TFLOAT, fpixel, dest_file->crop.width, 
-            //&nulval, buf, &anynul, &status);
-        free(buf);
-        break;
-      }
-  }
-
+  fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
   if (status != 0)
-    e << "FITS file terminated prematurely!"; 
+    { kdu_error e; e << "FITS file terminated prematurely!"; }
 
   // increment the position in FITS file
-  fpixel[0] = dest_file->crop.x + 1; // read from the begining of line
-  fpixel[1] += dest_file->crop.height; // keep the frame and stoke the same and increment the row
+  fpixel[0] = dest_file->crop.x + 1;  // read from the begining of line
+  fpixel[1] += height; 
 
-  dest_file->num_unwritten_rows -= height;
+  num_unwritten_rows -= height;
 }

@@ -111,89 +111,75 @@ void
 fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args, 
     ska_source_file* const source_file)
 {
-  kdu_error e;
-  kdu_warning w;
-
-  source_file->num_unread_rows = 0;
-  fits.deafult_min = -50.0;
-  fits.deafult_min = 50.0;
+  // In case we terminate early
+  num_unread_rows = 0;
 
   fits.transform = NONE;
 
   if(!parse_fits_parameters(args))
-    e << "Error occured parsing FITS command line parameters";
+    { kdu_error e; e << "Error occured parsing FITS command line parameters"; }
 
   // Open specified file for read only access.
   fits_open_file(&in, source_file->fname, READONLY, &status); 
   if (status != 0)
-    e << "Unable to open input FITS file.";
+    { kdu_error e; e << "Unable to open input FITS file."; }
 
   fits_get_hdu_type(in, &type, &status);
   if (status != 0)
-    e << "Unable to get FITS type.";
+    { kdu_error e; e << "Unable to get FITS type."; }
 
   fits_get_img_type(in, &bitpix, &status);
   if (status != 0)
-    e << "Unable to get FITS image type.";
+    { kdu_error e; e << "Unable to get FITS image type."; }
 
   // Get number of dimensions.
   fits_get_img_dim(in, &naxis, &status);
   if (status != 0)
-    e << "Unable to get dimensions of FITS image.";
-  if (naxis != 2)
-    e << "FITS file does not contain image as it has less than 2 dimensions.";
-
+    { kdu_error e; e << "Unable to get dimensions of FITS image."; }
+  if (naxis < 2)
+    { kdu_error e; e << "FITS file does not contain image as it has less than "
+      "2 dimensions."; }
+  
   // Get length of each dimension.
-  int maxdim = sizeof(LONGLONG); //maximum dimentions to be returned
-  LONGLONG *naxes = (LONGLONG *) malloc(sizeof(LONGLONG) * 2);   
+  int maxdim = sizeof(LONGLONG); // maximum dimentions to be returned
+  LONGLONG *naxes = (LONGLONG *) malloc(sizeof(LONGLONG) * naxis);   
   if (naxes == NULL)
-    e << "Unable to allocate memory to get dimensions of FITS file.";
-
-  source_file->crop.width = naxes[0];
-  source_file->crop.height = naxes[1];
+    { kdu_error e; e << "Unable to allocate memory to get dimensions of FITS file."; }
 
   fits_get_img_sizell(in, maxdim, naxes, &status);   
   if (status != 0) { 
     free(naxes); 
-    e << "Unable to get FITS image size.";
+    kdu_error e; e << "Unable to get FITS image size.";
   }
 
-  free(naxes);
-
-
   // Prepare initial fpixel for CFITSIO. Will be used in fits_in::get
-  fpixel = (LONGLONG *) malloc(sizeof(LONGLONG) * 2);
+  fpixel = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);
 
   // Left corner of the image
-  fpixel[0] = source_file->crop.x + 1;
-  fpixel[1] = source_file->crop.y + 1;
+  if (source_file->crop.specified) {
+    fpixel[0] = source_file->crop.x + 1;
+    fpixel[1] = source_file->crop.y + 1;
+    fpixel[2] = source_file->crop.z + 1;
+  }
+  else {
+    fpixel[0] = 1;
+    fpixel[1] = 1;
+    fpixel[2] = 1;
+    source_file->crop.width = naxes[0];
+    source_file->crop.height = naxes[1];
+  }
+    if (naxis > 3)
+      fpixel[3] = 1;
+  free(naxes);
 
   // Read header
   fits_get_hdrspace(in,&nkeys,NULL, &status);
   if (status != 0) 
-    e << "Unable to get the number of header keywords in FITS file";
+    { kdu_error e; e << "Unable to get the number of header keywords in FITS file"; }
 
   source_file->float_minvals = fits.deafult_min;
   source_file->float_maxvals = fits.deafult_max;
 
-  for (int ii=1; ii<=nkeys; ii++) {
-    fits_read_keyn(in,ii,keyname,keyvalue,keycomment, &status);
-    if (status != 0)
-      e << "Error reading keyword number " << ii;
-
-    // overwitte default min and max values for the entire image
-    if (!fits.minmax)
-    {
-      if (!strcmp(keyname, "DATAMIN")) 
-        sscanf(keyvalue, "%lf", &source_file->float_minvals);
-      if (!strcmp(keyname, "DATAMAX")) 
-        sscanf(keyvalue, "%lf", &source_file->float_maxvals);
-    }
-
-    if (fits.meta)
-      std::cout << keyname << ": " << keyvalue << "\n  Comment: " << keycomment << "\n";
-
-  }
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
   std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
@@ -201,7 +187,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   double scale = 1.0;
   double zero = 0.0;
 
-  switch (fits.transform) { // todo: implement scaling
+  switch (fits.transform) { // TODO: implement scaling
     case NONE:
       scale = 1.0;
       zero = 0.0;
@@ -256,7 +242,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
 
   fits_set_bscale(in, scale, zero, &status); // Setting up the scaling
   if (status != 0)
-    e << "Could not turn the scaling off!";
+    { kdu_error e; e << "Could not turn the scaling off!"; }
 
   // Set initial parameters -- these may change if there is a colour palette
   //   expand_palette = remap_samples = invert_first_component = false;
@@ -287,10 +273,9 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
       source_file->precision = 64;
       break;
     default:            
-      e << "The number of bits in FITS image does not seem to be defined!";
+      kdu_error e; e << "The number of bits in FITS image does not seem to be defined!";
       break;
   }
-
 
   int num_colours = 1;
   int colour_space_confidence = 0;
@@ -306,6 +291,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
 
   //total number ot rows to read
   source_file->num_unread_rows = source_file->crop.height; 
+  std::cout << "fits header read" << std::endl;
 }
 
 /*****************************************************************************/
@@ -314,55 +300,54 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
 
 fits_in::~fits_in()
 {
-  kdu_error e;
-
+  if (num_unread_rows > 0)
+    { kdu_warning w; w << "Not all rows were read!"; }
   fits_close_file(in, &status);
   if (status != 0)
-    e << "Unable to close FITS image!";
+    { kdu_error e; e << "Unable to close FITS image!"; }
 }
 
 /*****************************************************************************/
-/*                                 fits_in::get                              */
+/*                            fits_in::read_stripe                           */
 /*****************************************************************************/
 
 void
-fits_in::read_stripe(int height, kdu_byte *buf,
-    ska_source_file* const source_file) 
+fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file)
 {
-  kdu_error e;
-
-  int anynul=0;
-  unsigned char nulval=0;
-
+  int anynul = 0;
+  unsigned char nulval = 0;
+  LONGLONG stripe_elements = source_file->crop.width * height;
+  fits_get_img_dim(in, &naxis, &status);
   switch (bitpix) { 
-    case FLOAT_IMG:     //<##>
-      fits_read_pixll(in, TFLOAT, fpixel, source_file->crop.width, &nulval, 
-          buf, &anynul, &status);
+    case FLOAT_IMG: 
+      fits_read_pixll(in, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
+          &anynul, &status);
       break;
-
-//      if (line.is_absolute()) { // reversible transformation
-//        convert_TFLOAT_to_ints(buffer, buf32, width,
-//            precision, true, float_minvals,
-//            float_maxvals, sample_bytes);
-//      }
-//      else {
-//        convert_TFLOAT_to_floats(buffer, buf32, width, 
-//            true, float_minvals, float_maxvals);
-//      }
-
   }
 
+  // for undefined pixels the buffer is being filled with -nan,
+  // with my current compiler isnan(-nan) is returning false.
+  // I identified -nan to be 4294967295 in binary, so thats how i'm 
+  // testing for this case...
+  // TODO: show this horrible snippet of code to someone for better ideas
+  union ufloat {
+    float f;
+    unsigned b;
+  } uf; 
+  uf.f = buf[0];
+  //std::cout << buf[0] << " " << uf.b << std::endl;
+  // set undefined pixels to the minimum float value in the image
+  if (uf.b == 4294967295)
+    buf[0] = source_file->float_minvals;
+
   if (status != 0)
-    e << "FITS file terminated prematurely!"; 
+    { kdu_error e; e << "FITS file terminated prematurely!"; }
 
   // increment the position in FITS file
   fpixel[0] = source_file->crop.x + 1; // read from the begining of line
-  if(fpixel[1] == source_file->crop.height) // if reached the end of what to be read
-    fpixel[1] = source_file->crop.y + 1;  // set to the begining for the next frame
-  else 
-    fpixel[1]++; // keep the frame and stoke the same and increment the row
+  fpixel[1] += height;
 
-  source_file->num_unread_rows--;
+  num_unread_rows--;
 }
 
 /*****************************************************************************/

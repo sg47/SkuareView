@@ -352,7 +352,7 @@ static ska_dest_file*
   num_threads = 0; // This is not actually the default -- see below.
   double_buffering_height = 0; // i.e., no double buffering
   cpu = false;
-  ska_dest_file *fhead, *ftail;
+  ska_dest_file *ofile;
 
   if (args.find("-i") != NULL)
     {
@@ -405,11 +405,6 @@ static ska_dest_file*
           (discard_levels < 0))
         { kdu_error e; e << "\"-reduce\" argument requires a non-negative "
           "integer parameter!"; }
-      args.advance();
-    }
-  if (args.find("-little_endian") != NULL)
-    {
-      little_endian = true;
       args.advance();
     }
 
@@ -472,29 +467,16 @@ static ska_dest_file*
 
   if (args.find("-o") != NULL)
     {
-      const char *delim, *string = args.advance();
+      const char *string = args.advance();
       if (string == NULL)
         { kdu_error e; e << "\"-o\" argument requires a parameter string."; }
-      for (; *string != '\0'; string=delim)
-        {
-          while (*string == ',') string++;
-          for (delim=string; (*delim != '\0') && (*delim != ','); delim++);
-          ska_dest_file *file = new ska_dest_file;
-          if (ftail == NULL)
-            fhead = ftail = file;
-          else
-            ftail = ftail->next = file;
-          file->fname = new char[(delim-string)+1];
-          strncpy(file->fname,string,delim-string);
-          file->fname[delim-string] = '\0';
-          if ((file->fp = fopen(file->fname,"wb")) == NULL)
-            { kdu_error e;
-              e << "Unable to open output file, \"" << file->fname << "\"."; }
-        }
+      ofile = new ska_dest_file;
+      ofile->fname = new char[strlen(string)+1];
+      strcpy(ofile->fname,string);
       args.advance();
     }
 
-  return fhead;
+  return ofile;
 }
 
 /*****************************************************************************/
@@ -566,7 +548,8 @@ int main(int argc, char *argv[])
   kdu_dims region;
   int num_threads, env_dbuf_height;
   bool simulate_parsing, cpu;
-  ska_dest_file *out_files =
+  std::cout << "parsing arguments" << std::endl;
+  ska_dest_file *ofile =
     parse_simple_args(args,ifname,max_bpp,simulate_parsing,skip_components,
                       max_layers,discard_levels,
                       region,preferred_min_stripe_height,
@@ -574,6 +557,7 @@ int main(int argc, char *argv[])
                       num_threads,env_dbuf_height,cpu);
   if (args.show_unrecognized(pretty_cout) != 0)
     { kdu_error e; e << "There were unrecognized command line arguments!"; }
+  std::cout << "arguments parsed" << std::endl;
 
   // Create appropriate output file
   kdu_compressed_source *input = NULL;
@@ -636,26 +620,23 @@ int main(int argc, char *argv[])
   kdu_dims *comp_dims = new kdu_dims[num_components];
   for (n=0; n < num_components; n++)
     codestream.get_dims(n,comp_dims[n],true);
+  n=0;
+  ofile->crop.width=comp_dims[n].size.x;
+  ofile->crop.height=comp_dims[n].size.y;
+  ofile->crop.x=comp_dims[n].pos.x;
+  ofile->crop.y=comp_dims[n].pos.y;
 
   // Next, prepare the output files
-  ska_dest_files *out;
-  if (out_files != NULL)
-    {
-      for (n=0, out=out_files; out != NULL; out=out->next, n++)
-        {
-          if (n >= num_components)
-            { kdu_error e; e << "You have supplied more output files than "
-              "there are image components to decompress!"; }
-              out->precision = codestream.get_bit_depth(n,true);
-              out->is_signed = codestream.get_signed(n,true);
-              out->write_header();
-            }
-        }
-      if (n < num_components)
-        codestream.apply_input_restrictions(skip_components,num_components=n,
-                                            discard_levels,max_layers,reg_ptr,
-                                            KDU_WANT_OUTPUT_COMPONENTS);
-    }
+  if (num_components == 0)
+    { kdu_error e; e << "Input image has no components!"; }
+  ofile->precision = codestream.get_bit_depth(n,true);
+  ofile->is_signed = codestream.get_signed(n,true);
+  std::cout << "writing header" << std::endl;
+  ofile->write_header(jp2_ultimate_src, args);
+  std::cout << "header written" << std::endl;
+  codestream.apply_input_restrictions(skip_components,num_components,
+                                    discard_levels,max_layers,reg_ptr,
+                                    KDU_WANT_OUTPUT_COMPONENTS);
 
   // Start the timer
   kdu_clock timer;
@@ -697,61 +678,66 @@ int main(int argc, char *argv[])
   // fundamental issue, not a Kakadu implementation issue).  For more on this,
   // see the extensive documentation provided for
   // `kdu_stripe_decompressor::pull_stripe'.
+  std::cout << "start decompressor" << std::endl;
   int *stripe_heights = new int[num_components];
   int *max_stripe_heights = new int[num_components];
-  kdu_int16 **stripe_bufs = new kdu_int16 *[num_components];
-                // Note: we will be using 16-bit stripe buffers throughout for
-                // this demonstration, but you can supply 8-bit stripe buffers
-                // to `kdu_stripe_compressor::push_stripe' if you prefer.
-  memset(stripe_bufs,0,sizeof(kdu_int16 *)*(size_t)num_components);
-  int *precisions = NULL;
   kdu_stripe_decompressor decompressor;
   decompressor.start(codestream,false,false,env_ref,NULL,env_dbuf_height);
+  std::cout << "get recommended stripe heights" << std::endl;
   decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,
                                               absolute_max_stripe_height,
                                               stripe_heights,
                                               max_stripe_heights);
-  for (n=0; n < num_components; n++)
+  std::cout << num_components << std::endl;
+  int *precisions = new int[num_components];
+  precisions[0] = ofile->precision;
+  std::cout << num_components << std::endl;
+
+    std::cout << ofile->reversible << std::endl;
+  if(ofile->reversible) {
+    std::cout << "hello" << std::endl;
+
+  }
+  else {
+    n=0;
+    std::cout << "allocate buffers" << std::endl;
+    float** stripe_bufs = new float *[num_components];
+
     if ((stripe_bufs[n] =
-         new kdu_int16[comp_dims[n].size.x*max_stripe_heights[n]]) == NULL)
-      { kdu_error e;
-        e << "Insufficient memory to allocate stripe buffers."; }
-  if (out_files != NULL)
-    { 
-      precisions = new int[num_components];
-      for (out=out_files, n=0; n < num_components; n++, out=out->next)
-        precisions[n] = out->precision;
+         new float[comp_dims[n].size.x*max_stripe_heights[n]]) == NULL)
+      { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
+
+    std::cout << "incremental processing" << std::endl;
+    // Now for the incremental processing
+    bool continues=true;
+    while (continues)
+      { 
+        decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,
+                                                    absolute_max_stripe_height,
+                                                    stripe_heights,NULL);
+        continues = decompressor.pull_stripe(stripe_bufs,stripe_heights,
+                                             NULL,NULL,NULL);
+        // Attempt to discount file writing time; note, however, that this
+        // does not account for the fact that writing large stripes can
+        // tie up a disk in the background, dramatically increasing the
+        // time taken to read new compressed data while the next stripe
+        // is being decompressed.  To avoid excessive skewing of timing
+        // results due to disk I/O time, it is recommended that you run
+        // the application without any output files for timing purposes.
+        // All the stripes still get fully decompressed into memory
+        // buffers, but the only disk I/O is that due to reading of the
+        // compressed source.
+        if (cpu)
+          processing_time += timer.get_ellapsed_seconds();
+        ofile->write_stripe(stripe_heights[n],stripe_bufs[n]);
+        if (cpu)
+          writing_time += timer.get_ellapsed_seconds();
+      }
+      decompressor.finish();
+      for (n=0; n < num_components; n++)
+        delete[] stripe_bufs[n];
+      delete[] stripe_bufs;
     }
-  
-  // Now for the incremental processing
-  bool continues=true;
-  while (continues)
-    { 
-      decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,
-                                                  absolute_max_stripe_height,
-                                                  stripe_heights,NULL);
-      continues = decompressor.pull_stripe(stripe_bufs,stripe_heights,
-                                           NULL,NULL,precisions);
-      if (out_files != NULL)
-        { // Attempt to discount file writing time; note, however, that this
-          // does not account for the fact that writing large stripes can
-          // tie up a disk in the background, dramatically increasing the
-          // time taken to read new compressed data while the next stripe
-          // is being decompressed.  To avoid excessive skewing of timing
-          // results due to disk I/O time, it is recommended that you run
-          // the application without any output files for timing purposes.
-          // All the stripes still get fully decompressed into memory
-          // buffers, but the only disk I/O is that due to reading of the
-          // compressed source.
-          if (cpu)
-            processing_time += timer.get_ellapsed_seconds();
-          for (out=out_files, n=0; n < num_components; n++, out=out->next)
-            out->write_stripe(stripe_heights[n],stripe_bufs[n]);
-          if (cpu)
-            writing_time += timer.get_ellapsed_seconds();
-        }
-    }
-  decompressor.finish();
   
   if (cpu)
     { // Report processing time
@@ -786,15 +772,11 @@ int main(int argc, char *argv[])
   input->close();
   if (jp2_ultimate_src.exists())
     jp2_ultimate_src.close();
-  for (n=0; n < num_components; n++)
-    delete[] stripe_bufs[n];
-  delete[] stripe_bufs;
   if (precisions != NULL)
     delete[] precisions;
   delete[] stripe_heights;
   delete[] max_stripe_heights;
   delete[] comp_dims;
-  while ((out=out_files) != NULL)
-    { out_files=out->next; delete out; }
+  delete ofile; 
   return 0;
 }

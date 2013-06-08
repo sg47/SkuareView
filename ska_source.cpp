@@ -1,6 +1,9 @@
+//SKA includes
 #include "ska_local.h"
 #include "hdf5_local.h"
 #include "fits_local.h"
+//testing includes
+#include <iostream>
 
 /*****************************************************************************/
 /*                      ska_source_file::read_header                         */
@@ -9,19 +12,37 @@
 void
   ska_source_file::read_header(jp2_family_tgt &tgt, kdu_args &args) 
 {
+  std::cout << "parsing SKA parameters" << std::endl;
   parse_ska_args(tgt, args);
+  std::cout << "SKA parameters parsed" << std::endl;
   const char *suffix;
+  std::cout << "crop.height " << crop.height << std::endl;
   in = NULL;
   if ((suffix = strchr(fname, '.')) != NULL) {
+    std::cout << suffix << std::endl;
     if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0)) {
       in = new hdf5_in();
+      in->read_header(tgt, args, this);
+    }
+    if ((strcmp(suffix+1,"fits")==0 || (strcmp(suffix+1,"FITS")==0)) ||
+        (strcmp(suffix+1,"imfits")==0 || (strcmp(suffix+1,"IMFITS")==0))) {
+      in = new fits_in();
       in->read_header(tgt, args, this);
     }
   }
   if (in == NULL)
   { kdu_error e; e << "Image file, \"" << fname << ", does not have a "
-      "recognized suffix.  Valid suffices are currently: h5. Upper or lower "
-      "case may be used, but must be used consistently."; }
+      "recognized suffix.  Valid suffices are currently: h5 and fits. "
+      "Upper or lower case may be used, but must be used consistently."; }
+
+  std::cout << "fname " << fname << std::endl;
+  std::cout << "bytes_per_sample " << bytes_per_sample << std::endl;
+  std::cout << "forced_prec " << forced_prec << std::endl;
+  std::cout << "precision " << precision << std::endl;
+  std::cout << "reversible " << reversible << std::endl;
+  std::cout << "signed " << is_signed << std::endl;
+  std::cout << "crop.height " << crop.height << std::endl;
+  std::cout << "crop.width " << crop.width << std::endl;
 }
 
 /*****************************************************************************/
@@ -29,7 +50,7 @@ void
 /*****************************************************************************/
 
 void
-  ska_source_file::read_stripe(int height, kdu_byte *buf)
+  ska_source_file::read_stripe(int height, float *buf)
 {
   // "this" is passed as a method of mimicing inheritance
   // the reason why have to do it this way is because "kdu_buffered_compress"
@@ -50,6 +71,7 @@ void
 
     if (args.find("-icrop") != NULL)
     {
+      crop.specified = true;
       const char *field_sep, *string = args.advance();
       for (field_sep=NULL; string != NULL; string=field_sep)
       {
@@ -121,32 +143,40 @@ void
       float_minvals = H5_FLOAT_MIN;
       float_maxvals = H5_FLOAT_MAX;
     }
+
+    std::cout << "constructing meta data box" << std::endl;
+    /* Put import parameter details into JPX header as a reference */
+    /* TODO: i just need to read the book on what the different box type
+     * integers are: otherwise this should be easy enough to get to work in its
+     * current state.
+    kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,
+                            0x70,0x09,0x11,0xE2,
+                            0xBC,0xFD,0x08,0x00,
+                            0x20,0x0C,0x9A,0x66};
+
+    std::cout << "copying over min and max" << std::endl;
+    kdu_byte* contents = new kdu_byte [BUFSIZ]; // Should be plenty
+    int contents_idx = 0, len = 0;
+    char* tmp = new char [128];
+    len = sprintf(tmp, "minfloat:%f,", float_minvals);
+    for (int i = 0; i < len; ++i, ++contents_idx)
+      contents[contents_idx] = tmp[i];
+    len = sprintf(tmp, "maxfloat:%f,", float_maxvals);
+    for (int i = 0; i < len; ++i, ++contents_idx)
+      contents[contents_idx] = tmp[i];
+    len = --contents_idx;
+    std::cout << "copying complete" << std::endl;
+
+    jp2_output_box out = jp2_output_box();
+    out.open(&tgt, , false, false); 
+    std::cout << out.get_box_type() << std::endl;
+    out.set_target_size(16 + len);
+    out.write(h5_uuid, 16); // unique identifier
+    out.write(contents, len);
+    if (!out.close())
+    { kdu_error e; e << "Could not flush box to header."; }
+    delete[] contents;
+    delete[] tmp;
+    */
   }
-
-  /* Put import parameter details into JPX header as a reference */
-  kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,
-    0x70,0x09,0x11,0xE2,
-    0xBC,0xFD,0x08,0x00,
-    0x20,0x0C,0x9A,0x66};
-
-  // TODO: Redundant code here almost certainly
-  kdu_byte* contents = (kdu_byte*) malloc (BUFSIZ); // Should be plenty
-  int contents_idx = 0, len = 0;
-  char* tmp = (char*) malloc (sizeof(char) * 128);
-  len = sprintf(tmp, "minfloat:%f,", float_minvals);
-  for (int i = 0; i < len; ++i, ++contents_idx)
-    contents[contents_idx] = tmp[i];
-  len = sprintf(tmp, "maxfloat:%f,", float_maxvals);
-  for (int i = 0; i < len; ++i, ++contents_idx)
-    contents[contents_idx] = tmp[i];
-  len = --contents_idx;
-
-  jp2_output_box out = jp2_output_box();
-  out.open(&tgt, out.get_box_type(), false, false); 
-  out.set_target_size(16 + len);
-  out.write(h5_uuid, 16); // unique identifier
-  out.write(contents, len);
-  if (!out.close())
-  { kdu_error e; e << "Could not flush box to header."; }
-  free(contents);
 }
