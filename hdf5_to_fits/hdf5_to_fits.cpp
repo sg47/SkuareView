@@ -79,7 +79,7 @@ int main (int argc, char*argv[]) {
   hsize_t* mem_extent = new hsize_t [rank];
   hsize_t* mem_offset = new hsize_t [rank];
   for(int i = 0; i < rank; ++i)
-    mem_offset = 0;
+    mem_offset[i] = 0;
   for(int i = 0; i < rank-1; ++i)
     mem_extent[i] = 1;
   mem_extent[rank-1] = extent[rank-1];
@@ -89,8 +89,7 @@ int main (int argc, char*argv[]) {
 
   /* Setup for FITS encoding */
   fitsfile* ffile;
-  int status;
-  std::cout << fname << std::endl;
+  int status = 0;
   fits_create_file(&ffile, fname, &status);
   if (status != 0) 
     err("Unable to create FITS file.");
@@ -109,29 +108,35 @@ int main (int argc, char*argv[]) {
   if (rank != 3) 
     err("Only 3D image conversion implemented.");
 
-  long* fpixel = new long[rank];
-  for(int i = 0; i < rank; ++i)
-    fpixel[i] = crop_offset[i];
-  for(; fpixel[0] < crop_offset[0] + crop_extent[0]; ++fpixel[0]) {
-    for(; fpixel[1] < crop_offset[1] + crop_extent[1]; ++fpixel[1]) {
-      std::cout << mem_offset[0] << " " << mem_offset[1] << " " << mem_offset[2]
-        << " " <<mem_extent[0] << " " << mem_extent[1] << " " << mem_extent[2] << std::endl;
+  long* lfpixel = new long[rank];
+  hsize_t* hfpixel = new hsize_t[rank];
+  for(int i = 0; i < rank; ++i) {
+    lfpixel[i] = crop_offset[i] + 1;
+    hfpixel[i] = crop_offset[i];
+  }
+  for(; hfpixel[0] < crop_offset[0] + crop_extent[0]; 
+      ++lfpixel[0], ++hfpixel[0]) {
+    for(; hfpixel[1] < crop_offset[1] + crop_extent[1]; 
+        ++lfpixel[1], ++hfpixel[1]) {
       if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, mem_offset, NULL,
         mem_extent, NULL) < 0)
         err("Unable to select memory space for HDF5.");
-      if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, crop_offset, NULL, 
+      if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, hfpixel, NULL, 
         mem_extent, NULL) < 0)
         err("Unable to select stripe in HDF5.");
       float* stripe = new float [crop_extent[2]];
       if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
             H5P_DEFAULT, stripe) < 0)
         err("Unable to read from HDF5 dataset.");
-      fits_write_pix(ffile, TFLOAT, fpixel, crop_extent[2], stripe, &status);
+      fits_write_pix(ffile, TFLOAT, lfpixel, crop_extent[2], stripe, &status);
+      if (status != 0)
+        err("Unable to write to fits file.");
       delete[] stripe;
     }
   }
 
-  delete[] fpixel;
+  delete[] lfpixel;
+  delete[] hfpixel;
   delete[] extent;
   delete[] mem_extent;
   delete[] crop_offset;

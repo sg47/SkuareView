@@ -48,6 +48,7 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   bitpix = FLOAT_IMG;
   naxis = 2; 
   num_unwritten_rows = 0;
+  status = 0;
 
   fpixel = new LONGLONG [naxis];
   fpixel[0] = dest_file->crop.x+1;
