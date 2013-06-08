@@ -848,10 +848,6 @@ int main(int argc, char *argv[])
 
       ifile->read_stripe(stripe_heights[n],stripe_bufs[n]);
 
-      for(int i = 0; i < stripe_heights[n] * ifile->crop.width; ++i)
-        std::cout << stripe_bufs[n][i] << " ";
-      std::cout << std::endl;
-
       if (cpu)
         reading_time += timer.get_ellapsed_seconds();
     } while (compressor.push_stripe(stripe_bufs,stripe_heights,NULL,NULL,

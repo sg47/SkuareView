@@ -34,30 +34,30 @@
 #include "sample_converter.h"
 
 /*****************************************************************************/
-/* STATIC                  convert_TFLOAT_to_floats                          */
+/* STATIC                   irreversible_normalize                           */
 /*****************************************************************************/
 
 static void
-convert_TFLOAT_to_floats(float *src, kdu_sample32 *dest,  int num, 
-                         bool is_signed, double minval, double maxval)
+  irreversible_normalize(float *buf, int buf_length, 
+    bool is_signed, double minval, double maxval, bool cerr_samples)
 {
-    float scale, offset=0.0;
-    float limmin=-0.75, limmax=0.75;
-    if (is_signed)
-        scale = 0.5 / (((maxval+minval) > 0.0)?maxval:(-minval));
-    else
-    {
-        scale = 1.0 / maxval;
-        offset = -0.5;
-    }
+  //TODO: add normalization domain
+  
+  float factor, scale, offset=0.0;
+  float limmin=-0.75, limmax=0.75;
+  offset = -0.5;
+  scale = 1.0 / fabs(maxval-minval);
 
-    for (int i = 0; i< num; i++)
-    {
-        float fval = (float)(src[i] * scale + offset);
-        fval = (fval > limmin)?fval:limmin;
-        fval = (fval < limmax)?fval:limmax;
-        dest[i].fval = fval;
-    }
+  for (int i = 0; i < buf_length; i++)
+  {
+    float fval = (buf[i]-minval) * scale + offset;
+    fval = (fval > limmin)?fval:limmin;
+    fval = (fval < limmax)?fval:limmax;
+    buf[i] = fval;
+
+    if (cerr_samples)
+      std::cerr << buf[i] << " ";
+  }
 }
 
 /*****************************************************************************/
@@ -113,6 +113,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
 {
   // In case we terminate early
   num_unread_rows = 0;
+  source_file->is_signed = true;
 
   fits.transform = NONE;
 
@@ -139,7 +140,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   if (naxis < 2)
     { kdu_error e; e << "FITS file does not contain image as it has less than "
       "2 dimensions."; }
-  
+
   // Get length of each dimension.
   int maxdim = sizeof(LONGLONG); // maximum dimentions to be returned
   LONGLONG *naxes = (LONGLONG *) malloc(sizeof(LONGLONG) * naxis);   
@@ -151,6 +152,11 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     free(naxes); 
     kdu_error e; e << "Unable to get FITS image size.";
   }
+  std::cout << "FITS dimensions [" << naxis << "]: ";
+  for(int i = 0; i < naxis; i++) 
+    std::cout << naxes[i] << " ";
+  std::cout << std::endl;
+  
 
   // Prepare initial fpixel for CFITSIO. Will be used in fits_in::get
   fpixel = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);
@@ -159,12 +165,14 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   if (source_file->crop.specified) {
     fpixel[0] = source_file->crop.x + 1;
     fpixel[1] = source_file->crop.y + 1;
-    fpixel[2] = source_file->crop.z + 1;
+    if (naxis > 2)
+      fpixel[2] = source_file->crop.z + 1;
   }
   else {
     fpixel[0] = 1;
     fpixel[1] = 1;
-    fpixel[2] = 1;
+    if (naxis > 2)
+      fpixel[2] = 1;
     source_file->crop.width = naxes[0];
     source_file->crop.height = naxes[1];
   }
@@ -176,9 +184,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   fits_get_hdrspace(in,&nkeys,NULL, &status);
   if (status != 0) 
     { kdu_error e; e << "Unable to get the number of header keywords in FITS file"; }
-
-  source_file->float_minvals = fits.deafult_min;
-  source_file->float_maxvals = fits.deafult_max;
 
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
@@ -317,13 +322,17 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file)
   int anynul = 0;
   unsigned char nulval = 0;
   LONGLONG stripe_elements = source_file->crop.width * height;
-  fits_get_img_dim(in, &naxis, &status);
+
+  std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
+  std::cout << height << " " << source_file->crop.width << std::endl;
   switch (bitpix) { 
     case FLOAT_IMG: 
       fits_read_pixll(in, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
           &anynul, &status);
       break;
   }
+  if (status != 0)
+    { kdu_error e; e << "FITS file terminated prematurely!"; }
 
   // for undefined pixels the buffer is being filled with -nan,
   // with my current compiler isnan(-nan) is returning false.
@@ -335,13 +344,12 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file)
     unsigned b;
   } uf; 
   uf.f = buf[0];
-  //std::cout << buf[0] << " " << uf.b << std::endl;
   // set undefined pixels to the minimum float value in the image
   if (uf.b == 4294967295)
     buf[0] = source_file->float_minvals;
 
-  if (status != 0)
-    { kdu_error e; e << "FITS file terminated prematurely!"; }
+  irreversible_normalize(buf, stripe_elements, source_file->is_signed, 
+      source_file->float_minvals, source_file->float_maxvals, false);
 
   // increment the position in FITS file
   fpixel[0] = source_file->crop.x + 1; // read from the begining of line

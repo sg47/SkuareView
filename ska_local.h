@@ -84,6 +84,9 @@ class ska_source_file {
     bool is_signed;
     bool reversible;
 
+    int rank;
+    int* extent;
+    int* offset;
     cropping crop;
     double float_minvals, float_maxvals;
     int num_unread_rows;

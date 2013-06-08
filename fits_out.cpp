@@ -105,13 +105,19 @@ fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file)
 {
   int stripe_elements = dest_file->crop.width * height;
   // "buf" will be of size "stripe_elements * bytes_per_sample"
+  std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
+  std::cout << height << " " << dest_file->crop.width << std::endl;
 
   fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
   if (status != 0)
     { kdu_error e; e << "FITS file terminated prematurely!"; }
+  int anynul = 0;
+  unsigned char nulval = 0;
+  fits_read_pixll(out, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
+      &anynul, &status);
+  std::cout << "STAT" << status << std::endl;
 
   // increment the position in FITS file
-  fpixel[0] = dest_file->crop.x + 1;  // read from the begining of line
   fpixel[1] += height; 
 
   num_unwritten_rows -= height;

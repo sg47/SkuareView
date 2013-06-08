@@ -67,6 +67,7 @@ void
 void
   ska_source_file::parse_ska_args(jp2_family_tgt &tgt, kdu_args &args)
 {
+  //TODO: get rid of this get_first
   if (args.get_first() != NULL) {
 
     if (args.find("-icrop") != NULL)
@@ -99,6 +100,11 @@ void
       }
       args.advance();
     }
+    else {
+      crop.x = 0;
+      crop.y = 0;
+      crop.z = 0;
+    } 
 
     if (args.find("-fprec") != NULL) {
       char *string = args.advance();
@@ -140,8 +146,13 @@ void
       args.advance();
     }
     else {
-      float_minvals = H5_FLOAT_MIN;
-      float_maxvals = H5_FLOAT_MAX;
+      // TODO: these values were just grabbed from the HDF5 1TB cube. A beter
+      // soln. would include including these values in the metadata of files.
+      // Also, because this data represents real values captured from the sky,
+      // we could come up with our own more general minval and maxval with
+      // respect to radio astronomy.
+      float_minvals = -.006383;
+      float_maxvals = 0.105909;
     }
 
     std::cout << "constructing meta data box" << std::endl;
