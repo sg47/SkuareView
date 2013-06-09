@@ -82,7 +82,7 @@ int main (int argc, char*argv[]) {
     mem_offset[i] = 0;
   for(int i = 0; i < rank-1; ++i)
     mem_extent[i] = 1;
-  mem_extent[rank-1] = extent[rank-1];
+  mem_extent[rank-1] = crop_extent[rank-1];
   hid_t memspace = H5Screate_simple(rank, mem_extent, NULL);
   if (memspace < 0) 
     err("Unable to create memory space for HDF5 file.");
