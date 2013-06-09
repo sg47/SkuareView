@@ -110,14 +110,15 @@ int main (int argc, char*argv[]) {
 
   long* lfpixel = new long[rank];
   hsize_t* hfpixel = new hsize_t[rank];
-  for(int i = 0; i < rank; ++i) {
-    lfpixel[i] = crop_offset[i] + 1;
+  for(int i = 0; i < rank; ++i) 
+    lfpixel[i] = 1;
+  for(int i = 0; i < rank; ++i) 
     hfpixel[i] = crop_offset[i];
-  }
+
   for(; hfpixel[0] < crop_offset[0] + crop_extent[0]; 
-      ++lfpixel[0], ++hfpixel[0]) {
+      ++lfpixel[2], ++hfpixel[0]) { // freq
     for(; hfpixel[1] < crop_offset[1] + crop_extent[1]; 
-        ++lfpixel[1], ++hfpixel[1]) {
+        ++lfpixel[1], ++hfpixel[1]) { 
       if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, mem_offset, NULL,
         mem_extent, NULL) < 0)
         err("Unable to select memory space for HDF5.");
