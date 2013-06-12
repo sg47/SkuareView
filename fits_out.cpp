@@ -27,6 +27,51 @@
 // Fits includes
 #include "fitsio.h"
 
+enum domain { LOG, SQRT, LINEAR };
+
+/*****************************************************************************/
+/* STATIC                   irreversible_renormalize                         */
+/*****************************************************************************/
+
+static void
+irreversible_renormalize(float *buf, int buf_length, 
+    double minval, double maxval, domain samples_domain)
+{
+  float scale, factor, offset=0.0;
+
+  /* The images captured in radio astronomy have extremely dynamic range of
+   * values. As such a linear scaling will often result an over compressed 
+   * image, because most of the data will end up being extremely close 
+   * together. As such we use a log or sqrt domain to minimize the loss in 
+   * precision */
+  if (samples_domain == LINEAR) {
+    scale = fabs(maxval-minval);
+  }
+  else if (samples_domain == LOG) { // invert the log transform
+    factor = 500;
+    scale = log((maxval - minval) * factor + 1);
+  }
+  else if (samples_domain == SQRT) { // invert the sqrt transform
+    scale = sqrt(fabs(maxval-minval));
+  }
+  offset = minval;   
+
+  for (int i = 0; i < buf_length; i++)
+  {
+    float fval = (double)((buf[i] + 0.5) * scale);
+    if (samples_domain == LINEAR) 
+      fval += offset;    
+    else if (samples_domain == LOG) 
+      fval = (exp(fval) - 1) / factor + offset;
+    else if (samples_domain == SQRT) 
+      fval = fval * fval + offset; 
+
+    fval = (fval > minval)?fval:minval;
+    fval = (fval < maxval)?fval:maxval;
+    buf[i]= fval;
+  }
+}
+
 /* ========================================================================= */
 /*                                 fits_out                                  */
 /* ========================================================================= */
@@ -60,6 +105,15 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   naxes[0] = dest_file->crop.width;
   naxes[1] = dest_file->crop.height;
 
+  // fits file names must be preceded by a '!' in order to overwrite files in
+  // cfitsio
+  char* fitsfname = new char [BUFSIZ];
+  fitsfname[0] = '!';
+  for(int i = 0; dest_file->fname[i] != '\0'; ++i) 
+    fitsfname[i+1] = dest_file->fname[i];
+  delete[] dest_file->fname;
+  dest_file->fname = fitsfname;
+
   // Create destination FITS file
   fits_create_file(&out, dest_file->fname, &status);
   if (status != 0)
@@ -75,6 +129,11 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   fits_create_img(out, bitpix, naxis, naxes, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to create image FITS file."; }
+
+  fits_write_key(out, TFLOAT, "DATAMIN", &(dest_file->samples_min), NULL, &status);
+  fits_write_key(out, TFLOAT, "DATAMAX", &(dest_file->samples_max), NULL, &status);
+  if (status != 0)
+    { kdu_error e; e << "Unable to write min/max keywords to FITS file."; }
 
   num_unwritten_rows = dest_file->crop.height;
   delete[] naxes;
@@ -94,7 +153,6 @@ fits_out::~fits_out()
   fits_close_file(out, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to close FITS image!"; }
-
 }
 
 /*****************************************************************************/
@@ -106,17 +164,12 @@ fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file)
 {
   int stripe_elements = dest_file->crop.width * height;
   // "buf" will be of size "stripe_elements * bytes_per_sample"
-  std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
-  std::cout << height << " " << dest_file->crop.width << std::endl;
+  irreversible_renormalize(buf, stripe_elements, dest_file->samples_min,
+      dest_file->samples_max, LINEAR);
 
-  //fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
+  fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
   if (status != 0)
     { kdu_error e; e << "FITS file terminated prematurely!"; }
-  int anynul = 0;
-  unsigned char nulval = 0;
-  fits_read_pixll(out, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
-      &anynul, &status);
-  std::cout << "STAT" << status << std::endl;
 
   // increment the position in FITS file
   fpixel[1] += height; 

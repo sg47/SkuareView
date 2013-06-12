@@ -7,6 +7,9 @@
 //testing includes
 #include <iostream>
 
+#define SAMPLES_MIN -.006383
+#define SAMPLES_MAX 0.105909
+
 /* Specifies the cropping of the input hdf5 file. Currently only 1 plane
  * is specified. Previously we had handled the 3rd dimension with components
  * however this approach is not feasible with the stripe compressor. The reason
@@ -66,7 +69,7 @@ class ska_source_file {
     ~ska_source_file() {
       if (fname != NULL) delete[] fname;
       if (fp != NULL) fclose(fp);
-      std::cout << "did that go ok?" << std::endl;
+      delete in;
     }
     void read_header(jp2_family_tgt &tgt, kdu_args &args);
     void read_stripe(int height, float *buf);
@@ -128,6 +131,7 @@ class ska_dest_file {
     ~ska_dest_file() {
       if (fname != NULL) delete[] fname;
       if (fp != NULL) fclose(fp);
+      delete out;
     }
     void write_header(jp2_family_src &src, kdu_args &args);
     void write_stripe(int height, float *buf);

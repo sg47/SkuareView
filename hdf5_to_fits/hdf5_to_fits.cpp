@@ -21,6 +21,7 @@ void err(std::string message) {
 }
 
 int main (int argc, char*argv[]) {
+  std::cout << "HDF5 to FITS" << std::endl;
   /* HDF5 file must follow these specifications: 
    *    - 32 bit floating point samples
    *    - dataset name must be "full_cube"        
@@ -39,6 +40,7 @@ int main (int argc, char*argv[]) {
     int i;
     for(i = 0; temp_fname[i] != '\0'; ++i)
       fname[i+1] = temp_fname[i];
+    fname[i+1] = '\0';
 
     crop_offset[0] = atoi(argv[3]);
     crop_offset[1] = atoi(argv[4]);
@@ -91,6 +93,7 @@ int main (int argc, char*argv[]) {
   fitsfile* ffile;
   int status = 0;
   fits_create_file(&ffile, fname, &status);
+  std::cout << status << std::endl;
   if (status != 0) 
     err("Unable to create FITS file.");
   int iomode = READWRITE;

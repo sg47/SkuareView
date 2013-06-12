@@ -151,8 +151,8 @@ void
       // Also, because this data represents real values captured from the sky,
       // we could come up with our own more general minval and maxval with
       // respect to radio astronomy.
-      float_minvals = -.006383;
-      float_maxvals = 0.105909;
+      float_minvals = SAMPLES_MIN;
+      float_maxvals = SAMPLES_MAX;
     }
 
     std::cout << "constructing meta data box" << std::endl;

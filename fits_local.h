@@ -57,21 +57,6 @@ typedef struct {
  * Not all transforms will be defined for all FITS image types.
  */
 typedef enum {
-  NONE, // no scaling
-  LOG, // Logarithmic scale
-  NEGATIVE_LOG, // Inverse image from logarithmic scale
-  LINEAR, // Linear scale
-  NEGATIVE_LINEAR, // Inverse image from linear scale
-  RAW, // Convert raw values to image intensities.  
-  // Only defined for FITS files containing short/byte data.  
-  // If raw data is signed, it will be shifted to be unsigned.
-  NEGATIVE_RAW, // Inverse image from raw transform
-  SQRT, // Square root scale
-  NEGATIVE_SQRT, // Inverse image from square root scale
-  SQUARED, // Squared scale
-  NEGATIVE_SQUARED, // Inverse image from squared scale
-  POWER, // Power scale
-  NEGATIVE_POWER, // Inverse image from power scale
   DEFAULT // Default transform to use if no transform is explicitly specified.  
     // This will depend on the FITS data type.
 } Transform;
@@ -215,6 +200,7 @@ class fits_out : public ska_dest_file_base {
     int bitpix;
     int type;
     int naxis;
+
   private: // Writing descriptions
     int num_unwritten_rows;
 };

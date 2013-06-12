@@ -115,8 +115,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   num_unread_rows = 0;
   source_file->is_signed = true;
 
-  fits.transform = NONE;
-
   if(!parse_fits_parameters(args))
     { kdu_error e; e << "Error occured parsing FITS command line parameters"; }
 
@@ -192,58 +190,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   double scale = 1.0;
   double zero = 0.0;
 
-  switch (fits.transform) { // TODO: implement scaling
-    case NONE:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case LOG:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case NEGATIVE_LOG:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case LINEAR:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case NEGATIVE_LINEAR:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case RAW:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case NEGATIVE_RAW:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case SQRT:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case NEGATIVE_SQRT:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case NEGATIVE_SQUARED:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case POWER:
-      scale = 1.0;
-      zero = 0.0;
-      break;
-    case NEGATIVE_POWER:
-      scale = 1.0;
-      zero = 0.0;
-      break;          
-    default:
-      break;
-  }
 
   fits_set_bscale(in, scale, zero, &status); // Setting up the scaling
   if (status != 0)
@@ -323,8 +269,6 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file)
   unsigned char nulval = 0;
   LONGLONG stripe_elements = source_file->crop.width * height;
 
-  std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
-  std::cout << height << " " << source_file->crop.width << std::endl;
   switch (bitpix) { 
     case FLOAT_IMG: 
       fits_read_pixll(in, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
@@ -526,54 +470,6 @@ bool fits_in::parse_fits_parameters(kdu_args &args)
       args.advance();
     }
 
-    if (args.find("-scale") != NULL){ // What scaling should be performed on the raw FITS data? 
-      if ((string = args.advance()) == NULL){ 
-        kdu_error e; 
-        e << "\"-scale\" argument requires the type of scaling!"; 
-      }else{
-        if (strcasecmp(string,"LOG") == 0) {
-          fits.transform = LOG;
-        }
-        else if (strcasecmp(string,"NEGATIVE_LOG") == 0) {
-          fits.transform = NEGATIVE_LOG;
-        }
-        else if (strcasecmp(string,"LINEAR") == 0) {
-          fits.transform = LINEAR;
-        }
-        else if (strcasecmp(string,"NEGATIVE_LINEAR") == 0) {
-          fits.transform = NEGATIVE_LINEAR;
-        }
-        else if (strcasecmp(string,"RAW") == 0) {
-          fits.transform = RAW;
-        }
-        else if (strcasecmp(string,"NEGATIVE_RAW") == 0) {
-          fits.transform = NEGATIVE_RAW;
-        }
-        else if (strcasecmp(string,"SQRT") == 0) {
-          fits.transform = SQRT;
-        }
-        else if (strcasecmp(string,"NEGATIVE_SQRT") == 0) {
-          fits.transform = NEGATIVE_SQRT;
-        }
-        else if (strcasecmp(string,"SQUARED") == 0) {
-          fits.transform = SQUARED;
-        }
-        else if (strcasecmp(string,"NEGATIVE_SQUARED") == 0) {
-          fits.transform = NEGATIVE_SQUARED;
-        }
-        else if (strcasecmp(string,"POWER") == 0) {
-          fits.transform = POWER;
-        }
-        else if (strcasecmp(string,"NEGATIVE_POWER") == 0) {
-          fits.transform = NEGATIVE_POWER;
-        }
-        else {
-          kdu_error e;
-          e << "Unknown transform specified:" << string << " Using default instead.\n";
-        }
-      }
-      args.advance();
-    }
   }
 
   /*

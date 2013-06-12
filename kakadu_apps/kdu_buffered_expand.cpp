@@ -323,9 +323,9 @@ static ska_dest_file*
                     bool &simulate_parsing, int &skip_components,
                     int &max_layers, int &discard_levels,
                     kdu_dims &region, int &preferred_min_stripe_height,
-                    int &absolute_max_stripe_height,
-                    int &num_threads, int &double_buffering_height,
-                    bool &cpu)
+                    int &absolute_max_stripe_height, bool &force_precise,
+                    bool &want_fastest, int &num_threads,
+                    int &double_buffering_height, bool &cpu)
   /* Parses all command line arguments whose names include a dash.  Returns
      a list of open output files.
         Note that `num_threads' is set to 0 if no multi-threaded processing
@@ -349,6 +349,7 @@ static ska_dest_file*
   region.size = region.pos = kdu_coords(0,0);
   preferred_min_stripe_height = 8;
   absolute_max_stripe_height = 1024;
+  force_precise = want_fastest = false;
   num_threads = 0; // This is not actually the default -- see below.
   double_buffering_height = 0; // i.e., no double buffering
   cpu = false;
@@ -361,6 +362,7 @@ static ska_dest_file*
         { kdu_error e; e << "\"-i\" argument requires a file name!"; }
       ifname = new char[strlen(string)+1];
       strcpy(ifname,string);
+      ifname[strlen(string)] = '\0';
       args.advance();
     }
   else
@@ -436,7 +438,7 @@ static ska_dest_file*
       args.advance();
     }
   else
-    double_buffering_height = 32;
+    double_buffering_height = -1;
 
   if (args.find("-cpu") != NULL)
     {
@@ -463,6 +465,16 @@ static ska_dest_file*
           "integer parameter, no smaller than the value associated with the "
           "`-min_height' argument."; }
       args.advance();
+    }
+  if (args.find("-fastest") != NULL)
+    { 
+      args.advance();
+      want_fastest = true;
+    }
+  if (args.find("-precise") != NULL)
+    { 
+      args.advance();
+      force_precise = true;
     }
 
   if (args.find("-o") != NULL)
@@ -540,24 +552,21 @@ int main(int argc, char *argv[])
   kdu_args args(argc,argv,"-s");
 
   // Parse simple arguments from command line
-  
   char *ifname;
   float max_bpp;
   int skip_components, max_layers, discard_levels;
   int preferred_min_stripe_height, absolute_max_stripe_height;
   kdu_dims region;
   int num_threads, env_dbuf_height;
-  bool simulate_parsing, cpu;
-  std::cout << "parsing arguments" << std::endl;
+  bool force_precise, want_fastest, simulate_parsing, cpu;
   ska_dest_file *ofile =
     parse_simple_args(args,ifname,max_bpp,simulate_parsing,skip_components,
                       max_layers,discard_levels,
                       region,preferred_min_stripe_height,
-                      absolute_max_stripe_height,
+                      absolute_max_stripe_height,force_precise,want_fastest,
                       num_threads,env_dbuf_height,cpu);
   if (args.show_unrecognized(pretty_cout) != 0)
     { kdu_error e; e << "There were unrecognized command line arguments!"; }
-  std::cout << "arguments parsed" << std::endl;
 
   // Create appropriate output file
   kdu_compressed_source *input = NULL;
@@ -611,7 +620,7 @@ int main(int argc, char *argv[])
                                           KDU_WANT_OUTPUT_COMPONENTS);
     }
 
-        // If you wish to have geometric transformations folded into the
+        // If you wish to have rotation/transposition folded into the
         // decompression process automatically, this is the place to call
         // `kdu_codestream::change_appearance'.
 
@@ -620,23 +629,25 @@ int main(int argc, char *argv[])
   kdu_dims *comp_dims = new kdu_dims[num_components];
   for (n=0; n < num_components; n++)
     codestream.get_dims(n,comp_dims[n],true);
+
+  // Next, prepare the output files
   n=0;
   ofile->crop.width=comp_dims[n].size.x;
   ofile->crop.height=comp_dims[n].size.y;
   ofile->crop.x=comp_dims[n].pos.x;
   ofile->crop.y=comp_dims[n].pos.y;
+  bool flip_vertically = false;
 
-  // Next, prepare the output files
   if (num_components == 0)
     { kdu_error e; e << "Input image has no components!"; }
   ofile->precision = codestream.get_bit_depth(n,true);
   ofile->is_signed = codestream.get_signed(n,true);
-  std::cout << "writing header" << std::endl;
   ofile->write_header(jp2_ultimate_src, args);
-  std::cout << "header written" << std::endl;
   codestream.apply_input_restrictions(skip_components,num_components,
                                     discard_levels,max_layers,reg_ptr,
                                     KDU_WANT_OUTPUT_COMPONENTS);
+  if (flip_vertically)
+    codestream.change_appearance(false,true,false);
 
   // Start the timer
   kdu_clock timer;
@@ -668,7 +679,7 @@ int main(int argc, char *argv[])
     }
 
   // Construct the stripe-decompressor object (this does all the work) and
-  // assigns stripe buffers for incremental processing.  The present application
+  // assigns stripe buffers for incremental processing. The present application
   // uses `kdu_stripe_decompressor::get_recommended_stripe_heights' to find
   // suitable stripe heights for processing.  If your application has its own
   // idea of what constitutes a good set of stripe heights, you may generally
@@ -678,29 +689,22 @@ int main(int argc, char *argv[])
   // fundamental issue, not a Kakadu implementation issue).  For more on this,
   // see the extensive documentation provided for
   // `kdu_stripe_decompressor::pull_stripe'.
-  std::cout << "start decompressor" << std::endl;
+  int *precisions = new int[num_components];
   int *stripe_heights = new int[num_components];
   int *max_stripe_heights = new int[num_components];
   kdu_stripe_decompressor decompressor;
-  decompressor.start(codestream,false,false,env_ref,NULL,env_dbuf_height);
-  std::cout << "get recommended stripe heights" << std::endl;
+  decompressor.start(codestream,force_precise,want_fastest,
+                     env_ref,NULL,env_dbuf_height);
   decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,
                                               absolute_max_stripe_height,
                                               stripe_heights,
                                               max_stripe_heights);
-  std::cout << num_components << std::endl;
-  int *precisions = new int[num_components];
   precisions[0] = ofile->precision;
-  std::cout << num_components << std::endl;
-
-    std::cout << ofile->reversible << std::endl;
   if(ofile->reversible) {
-    std::cout << "hello" << std::endl;
-
+    std::cout << "reversible compression unimplemented" << std::endl;
   }
   else {
     n=0;
-    std::cout << "allocate buffers" << std::endl;
     float** stripe_bufs = new float *[num_components];
 
     if ((stripe_bufs[n] =
@@ -734,6 +738,7 @@ int main(int argc, char *argv[])
           writing_time += timer.get_ellapsed_seconds();
       }
       decompressor.finish();
+
       for (n=0; n < num_components; n++)
         delete[] stripe_bufs[n];
       delete[] stripe_bufs;

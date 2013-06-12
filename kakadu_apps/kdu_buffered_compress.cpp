@@ -582,9 +582,7 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
   if (ifile == NULL)
     { kdu_error e; e << "You must supply an input file"; }
 
-  std::cout << "reading header" << std::endl;
   ifile->read_header(jp2_ultimate_tgt, args); 
-  std::cout << "header read!" << std::endl;
   return ifile;
 }
 
@@ -638,15 +636,12 @@ int main(int argc, char *argv[])
   kdu_simple_file_target file_out;
   jp2_family_tgt jp2_ultimate_tgt;
   jp2_target jp2_out;
-  std::cout << "constructing ska_source_file" << std::endl;
   ska_source_file *ifile =
     parse_simple_args(args,ofname,max_rate,min_rate,rate_tolerance,
         preferred_min_stripe_height,
         absolute_max_stripe_height,flush_period,
         num_threads,env_dbuf_height,cpu,jp2_ultimate_tgt);
-  std::cout << "constructed!" << std::endl;
 
-  std::cout << "creating output file" << std::endl;
   // Create appropriate output file
   if (check_jp2_suffix(ofname)) {
     output = &jp2_out;
@@ -658,7 +653,6 @@ int main(int argc, char *argv[])
     file_out.open(ofname);
   }
   delete[] ofname;
-  std::cout << "output file created" << std::endl;
 
   // Collect any dimensioning/tiling parameters supplied on the command line;
   // need dimensions for raw files, if any.
@@ -711,7 +705,6 @@ int main(int argc, char *argv[])
     siz.set(Ssigned,num_components,0,ifile->is_signed);
     siz.set(Sprecision,num_components,0,ifile->precision);
   }
-  std::cout << "SIZ: signed and precision set" << std::endl;
   kdu_long samples = ifile->crop.width; samples *= ifile->crop.height;
   total_samples += samples;
   total_pixels = (samples > total_pixels)?samples:total_pixels;
@@ -719,9 +712,7 @@ int main(int argc, char *argv[])
   int c_components=0;
   if (!siz.get(Scomponents,0,0,c_components))
     siz.set(Scomponents,0,0,c_components=++num_components);
-  std::cout << "SIZ: finalizing all" << std::endl;
   siz.finalize_all();
-  std::cout << "SIZ: finalizing all complete" << std::endl;
   std::cout << num_components << std::endl;
 
   // Start the timer
@@ -736,7 +727,6 @@ int main(int argc, char *argv[])
   if (args.show_unrecognized(pretty_cout) != 0)
     { kdu_error e; e << "There were unrecognized command line arguments!"; }
   codestream.access_siz()->finalize_all();
-  std::cout << "codestream finalized" << std::endl;
 
   // Write the JP2 header, if necessary
   if (jp2_ultimate_tgt.exists()) { 
@@ -761,7 +751,6 @@ int main(int argc, char *argv[])
   }
 
   // Determine the desired cumulative layer sizes
-  std::cout << "layers" << std::endl;
   int num_layer_sizes;
   kdu_params *cod = codestream.access_siz()->access_cluster(COD_params);
   if (!(cod->get(Clayers,0,0,num_layer_sizes) && (num_layer_sizes > 0)))
