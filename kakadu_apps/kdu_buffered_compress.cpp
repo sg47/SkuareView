@@ -582,7 +582,6 @@ parse_simple_args(kdu_args &args, char * &ofname, float &max_rate,
   if (ifile == NULL)
     { kdu_error e; e << "You must supply an input file"; }
 
-  ifile->read_header(jp2_ultimate_tgt, args); 
   return ifile;
 }
 
@@ -654,6 +653,9 @@ int main(int argc, char *argv[])
   }
   delete[] ofname;
 
+  ifile->read_header(jp2_ultimate_tgt, args); 
+
+  std::cout << "hey there" << std::endl;
   // Collect any dimensioning/tiling parameters supplied on the command line;
   // need dimensions for raw files, if any.
   siz_params siz;
@@ -736,7 +738,7 @@ int main(int argc, char *argv[])
     dimensions.finalize_compatibility(codestream.access_siz());
     // There is no need to actually call the above function here,
     // since the `init' function was invoked using the already
-    // finalized parameter sub-system.  However, if your application
+    // finalized parameter sub-system. However, if your application
     // needs to initialize the `jp2_dimensions' object using only the
     // siz information (as in "kdu_compress") you really should later
     // call `jp2_dimensions::finalize_compatibility' once you have
@@ -744,6 +746,7 @@ int main(int argc, char *argv[])
     jp2_colour colour = jp2_out.access_colour();
     colour.init((num_components>=3)?JP2_sRGB_SPACE:JP2_sLUM_SPACE);
     jp2_out.write_header();
+    ifile->write_metadata(jp2_ultimate_tgt);
     // If you want to write additional JP2 boxes, this is the place to
     // do it.  For an example, refer to the `write_extra_jp2_boxes'
     // function in the "kdu_compress" demo application.

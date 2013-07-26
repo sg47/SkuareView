@@ -155,7 +155,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     std::cout << naxes[i] << " ";
   std::cout << std::endl;
   
-
   // Prepare initial fpixel for CFITSIO. Will be used in fits_in::get
   fpixel = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);
 
@@ -177,15 +176,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     if (naxis > 3)
       fpixel[3] = 1;
   free(naxes);
-
-  // Read header
-  fits_get_hdrspace(in,&nkeys,NULL, &status);
-  if (status != 0) 
-    { kdu_error e; e << "Unable to get the number of header keywords in FITS file"; }
-
-  std::cout << "\nThe following values of MIN and MAX will be used:\n";
-  std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
-  std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
 
   double scale = 1.0;
   double zero = 0.0;
@@ -242,6 +232,43 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
 
   //total number ot rows to read
   source_file->num_unread_rows = source_file->crop.height; 
+
+  // Read header
+  fits_get_hdrspace(in, &nkeys, NULL, &status);
+  if (status != 0)
+    { kdu_error e; e << "Unable to get the number of keywords in FITS file."; }
+
+  source_file->metadata_buffer = new kdu_byte [BUFSIZ];
+  int buf_idx = 0; 
+  for (int i=1; i<=nkeys; i++) {
+    // read for data min and max value
+    fits_read_keyn(in,i,keyname,keyvalue,keycomment, &status);
+    if (status != 0)
+    { kdu_error e; e << "Error reading keyword number " << i; }
+    
+    // overwrite default min and max values for the entire image
+    if (!fits.minmax) {
+      if (!strcmp(keyname, "DATAMIN")) sscanf(keyvalue, "%lf", &source_file->float_minvals);
+      if (!strcmp(keyname, "DATAMAX")) sscanf(keyvalue, "%lf", &source_file->float_maxvals);
+    }
+
+    // put all the header data into metadata (in case we ever convert back to
+    // FITS
+    fits_read_record(in, i, record, &status);
+    if (status != 0)
+      { kdu_error e; e << "Error reading keyword number " << i; }
+    // Then write to metadata
+    for (int j=0; record[j] != '\0'; ++j) 
+      source_file->metadata_buffer[buf_idx++] = record[j];
+    source_file->metadata_buffer[buf_idx++] = '?'; // My character to split records
+  }
+  source_file->metadata_buffer[buf_idx--] = '\0';
+  source_file->metadata_length = buf_idx;
+
+  std::cout << "\nThe following values of MIN and MAX will be used:\n";
+  std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
+  std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
+
   std::cout << "fits header read" << std::endl;
 }
 

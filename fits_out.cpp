@@ -137,6 +137,50 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
 
   num_unwritten_rows = dest_file->crop.height;
   delete[] naxes;
+
+  // Open FITS Header information box and write that to the FITS file
+  jp2_input_box meta_box;
+  meta_box.open(&src);
+  meta_box.open_next();
+  while(!meta_box.exists() && !(meta_box.get_box_type() == 75756964) )
+    meta_box.open_next();
+  if (meta_box.exists()) {
+
+    kdu_byte fits_uuid[16] = {0x24,0x37,0xE6,0xC0,
+                            0xF2,0xB2,0x11,0xE2,
+                            0xB7,0x78,0x08,0x00,
+                            0x20,0x0C,0x9A,0x66};
+
+    kdu_byte* metadata_buf = new kdu_byte [BUFSIZ];
+    int contents_length = meta_box.get_box_bytes();
+    meta_box.read(metadata_buf, meta_box.get_box_bytes());
+    // check uuid
+    bool correct_uuid = true;
+    for(int i=0; i<16; ++i) {
+      if (fits_uuid[i] != metadata_buf[i]) {
+        correct_uuid = false;
+        break;
+      }
+    }
+    if (correct_uuid) {
+      char* record = new char [80]; // max length of a FITS record
+      int record_idx = 0;
+      for (int i=16; i<contents_length; ++i) {
+        if (metadata_buf[i] == '?') {
+          fits_write_record(out, record, &status);
+          if (status != 0)
+            { kdu_error e; e << "Unable to write record " << record; }
+          record_idx = 0;
+        }
+        else {
+          record[record_idx++] = metadata_buf[i];
+          // set new end of record (also clears out previous records
+          record[record_idx] = '\0';
+        }
+      }
+    }
+  }
+  
 }
 
 /*****************************************************************************/

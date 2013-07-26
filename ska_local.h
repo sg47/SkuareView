@@ -70,9 +70,11 @@ class ska_source_file {
       if (fname != NULL) delete[] fname;
       if (fp != NULL) fclose(fp);
       delete in;
+      delete[] metadata_buffer;
     }
     void read_header(jp2_family_tgt &tgt, kdu_args &args);
     void read_stripe(int height, float *buf);
+    void write_metadata(jp2_family_tgt &tgt);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
     void parse_ska_args(jp2_family_tgt &tgt, kdu_args &args);
@@ -86,6 +88,8 @@ class ska_source_file {
     int precision; // bit depth
     bool is_signed;
     bool reversible;
+    kdu_byte* metadata_buffer;
+    int metadata_length;
 
     int rank;
     int* extent;

@@ -28,6 +28,7 @@ void
         (strcmp(suffix+1,"imfits")==0 || (strcmp(suffix+1,"IMFITS")==0))) {
       in = new fits_in();
       in->read_header(tgt, args, this);
+      std::cout << "this could be a cool bug" << std::endl;
     }
   }
   if (in == NULL)
@@ -157,9 +158,8 @@ void
 
     std::cout << "constructing meta data box" << std::endl;
     /* Put import parameter details into JPX header as a reference */
-    /* TODO: i just need to read the book on what the different box type
-     * integers are: otherwise this should be easy enough to get to work in its
-     * current state.
+    /* TODO: this is actually DONE - but i'm going to exclude it until I have
+     * time to test it.
     kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,
                             0x70,0x09,0x11,0xE2,
                             0xBC,0xFD,0x08,0x00,
@@ -179,7 +179,7 @@ void
     std::cout << "copying complete" << std::endl;
 
     jp2_output_box out = jp2_output_box();
-    out.open(&tgt, , false, false); 
+    out.open(&tgt, 75756964, false, false); 
     std::cout << out.get_box_type() << std::endl;
     out.set_target_size(16 + len);
     out.write(h5_uuid, 16); // unique identifier
@@ -190,4 +190,25 @@ void
     delete[] tmp;
     */
   }
+}
+
+/*****************************************************************************/
+/*                      ska_source_file::write_metadata                      */
+/*****************************************************************************/
+
+void
+  ska_source_file::write_metadata(jp2_family_tgt &tgt)
+{
+  kdu_byte ska_uuid[16] = {0x24,0x37,0xE6,0xC0,
+                          0xF2,0xB2,0x11,0xE2,
+                          0xB7,0x78,0x08,0x00,
+                          0x20,0x0C,0x9A,0x66};
+
+  jp2_output_box out = jp2_output_box();
+  out.open(&tgt, 75756964, false, false); //75756964 is the uuid box type id
+  out.set_target_size((kdu_long)(16 + metadata_length));
+  if (!out.write(ska_uuid, 16) || !out.write(metadata_buffer, metadata_length)) 
+    { kdu_error e; e << "Unable to write metadata to JPX file"; }
+  if (!out.close())
+  { kdu_error e; e << "Could not flush box to header."; }
 }
