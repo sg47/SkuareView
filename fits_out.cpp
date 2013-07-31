@@ -91,19 +91,23 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   dest_file->reversible = false;
   dest_file->bytes_per_sample = 4;
   bitpix = FLOAT_IMG;
-  naxis = 2; 
+  naxis = 4; 
   num_unwritten_rows = 0;
   status = 0;
 
   fpixel = new LONGLONG [naxis];
   fpixel[0] = dest_file->crop.x+1;
   fpixel[1] = dest_file->crop.y+1;
+  for(int i = 2; i < naxis; ++i)
+    fpixel[i] = 1;
   std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
   /* Retrieve and use varaibles related to the input JPX image */
 
   long* naxes = new long [naxis];
   naxes[0] = dest_file->crop.width;
   naxes[1] = dest_file->crop.height;
+  for(int i = 2; i < naxis; ++i)
+    naxes[i] = 1;
 
   // fits file names must be preceded by a '!' in order to overwrite files in
   // cfitsio
@@ -140,13 +144,18 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
 
   // Open FITS Header information box and write that to the FITS file
   jp2_input_box meta_box;
-  meta_box.open(&src);
-  meta_box.open_next();
-  while(!meta_box.exists() && !(meta_box.get_box_type() == 75756964) )
+  meta_box.open(&src); //Open the main jp2 box
+  std::cout << meta_box.get_box_type() << std::endl;
+  meta_box.close();
+  meta_box.open_next(); //Open the first subbox
+  while(meta_box.exists() && !(meta_box.get_box_type() == 75756964) ) {
+    meta_box.close();
     meta_box.open_next();
+  }
   if (meta_box.exists()) {
 
-    kdu_byte fits_uuid[16] = {0x24,0x37,0xE6,0xC0,
+  std::cout << "2" << std::endl;
+    kdu_byte ska_uuid[16] = {0x24,0x37,0xE6,0xC0,
                             0xF2,0xB2,0x11,0xE2,
                             0xB7,0x78,0x08,0x00,
                             0x20,0x0C,0x9A,0x66};
@@ -156,14 +165,16 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     meta_box.read(metadata_buf, meta_box.get_box_bytes());
     // check uuid
     bool correct_uuid = true;
+    std::cout << metadata_buf << std::endl;
     for(int i=0; i<16; ++i) {
-      if (fits_uuid[i] != metadata_buf[i]) {
+      if (ska_uuid[i] != metadata_buf[i]) {
         correct_uuid = false;
         break;
       }
     }
     if (correct_uuid) {
       char* record = new char [80]; // max length of a FITS record
+  std::cout << "Eustan we have some metadata for fits and stuff" << std::endl;
       int record_idx = 0;
       for (int i=16; i<contents_length; ++i) {
         if (metadata_buf[i] == '?') {
@@ -180,6 +191,7 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
       }
     }
   }
+  meta_box.close();
   
 }
 

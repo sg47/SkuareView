@@ -604,7 +604,7 @@ check_jp2_suffix(const char *fname)
   if ((*cp != 'p') && (*cp != 'P'))
     return false;
   cp++;
-  if (*cp != '2')
+  if (*cp != '2' && *cp != 'x')
     return false;
   return true;
 }
