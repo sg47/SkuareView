@@ -159,6 +159,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   fpixel = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);
 
   // Left corner of the image
+  // The FITS library iterates from 1 instead of from 0
   if (source_file->crop.specified) {
     fpixel[0] = source_file->crop.x + 1;
     fpixel[1] = source_file->crop.y + 1;
@@ -262,15 +263,13 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
       source_file->metadata_buffer[buf_idx++] = record[j];
     source_file->metadata_buffer[buf_idx++] = '?'; // My character to split records
   }
-  source_file->metadata_buffer[buf_idx--] = '\0';
   source_file->metadata_length = buf_idx;
+  source_file->metadata_buffer[buf_idx--] = '\0';
   std::cout << source_file->metadata_buffer << std::endl;
 
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
   std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
-
-  std::cout << "fits header read" << std::endl;
 }
 
 /*****************************************************************************/

@@ -174,7 +174,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     }
     if (correct_uuid) {
       char* record = new char [80]; // max length of a FITS record
-  std::cout << "Eustan we have some metadata for fits and stuff" << std::endl;
       int record_idx = 0;
       for (int i=16; i<contents_length; ++i) {
         if (metadata_buf[i] == '?') {

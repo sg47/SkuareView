@@ -169,7 +169,7 @@ class fits_in : public ska_source_file_base {
     char keyname[FLEN_CARD];  //fits
     char keyvalue[FLEN_CARD];  //fits
     char keycomment[FLEN_CARD];  //fits
-    char record[FLEN_CARD*3];
+    char record[FLEN_CARD];
     bool parse_fits_parameters(kdu_args &args);
     int scale;
     int bitpix;
