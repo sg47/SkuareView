@@ -89,15 +89,11 @@ static void
   offset = -0.5;
   scale = 1.0 / fabs(maxval-minval);
 
-  for (int i = 0; i < buf_length; i++)
-  {
+  for (int i = 0; i < buf_length; i++) {
     float fval = (buf[i]-minval) * scale + offset;
     fval = (fval > limmin)?fval:limmin;
     fval = (fval < limmax)?fval:limmax;
     buf[i] = fval;
-
-    if (!cerr_samples)
-      std::cerr << buf[i] << " ";
   }
 }
 

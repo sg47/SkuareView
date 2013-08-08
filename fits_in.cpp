@@ -54,9 +54,6 @@ static void
     fval = (fval > limmin)?fval:limmin;
     fval = (fval < limmax)?fval:limmax;
     buf[i] = fval;
-
-    if (cerr_samples)
-      std::cerr << buf[i] << " ";
   }
 }
 

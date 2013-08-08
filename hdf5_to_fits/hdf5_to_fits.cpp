@@ -100,6 +100,10 @@ int main (int argc, char*argv[]) {
   fits_file_mode(ffile, &iomode, &status);
   if (status != 0) 
     err("Unable to select iomode in FITS file.");
+  // Select compression algorithm
+  fits_set_compression_type(ffile, GZIP_1, &status);
+  if (status != 0)
+    err("Unable to set compression type.");
   // FITS cube (RA,DEC,FREQ)
   std::swap (crop_extent[0], crop_extent[2]);
   fits_create_img(ffile, FLOAT_IMG, rank, crop_extent, &status);

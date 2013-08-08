@@ -12,11 +12,9 @@
 void
   ska_source_file::read_header(jp2_family_tgt &tgt, kdu_args &args) 
 {
-  std::cout << "parsing SKA parameters" << std::endl;
   parse_ska_args(tgt, args);
-  std::cout << "SKA parameters parsed" << std::endl;
+  std::cout << "minval: " << float_minvals << std::endl;
   const char *suffix;
-  std::cout << "crop.height " << crop.height << std::endl;
   in = NULL;
   if ((suffix = strchr(fname, '.')) != NULL) {
     std::cout << suffix << std::endl;
@@ -28,22 +26,12 @@ void
         (strcmp(suffix+1,"imfits")==0 || (strcmp(suffix+1,"IMFITS")==0))) {
       in = new fits_in();
       in->read_header(tgt, args, this);
-      std::cout << "this could be a cool bug" << std::endl;
     }
   }
   if (in == NULL)
   { kdu_error e; e << "Image file, \"" << fname << ", does not have a "
       "recognized suffix.  Valid suffices are currently: h5 and fits. "
       "Upper or lower case may be used, but must be used consistently."; }
-
-  std::cout << "fname " << fname << std::endl;
-  std::cout << "bytes_per_sample " << bytes_per_sample << std::endl;
-  std::cout << "forced_prec " << forced_prec << std::endl;
-  std::cout << "precision " << precision << std::endl;
-  std::cout << "reversible " << reversible << std::endl;
-  std::cout << "signed " << is_signed << std::endl;
-  std::cout << "crop.height " << crop.height << std::endl;
-  std::cout << "crop.width " << crop.width << std::endl;
 }
 
 /*****************************************************************************/
@@ -68,93 +56,89 @@ void
 void
   ska_source_file::parse_ska_args(jp2_family_tgt &tgt, kdu_args &args)
 {
-  //TODO: get rid of this get_first
-  if (args.get_first() != NULL) {
-
-    if (args.find("-icrop") != NULL)
+  if (args.find("-icrop") != NULL)
+  {
+    crop.specified = true;
+    const char *field_sep, *string = args.advance();
+    for (field_sep=NULL; string != NULL; string=field_sep)
     {
-      crop.specified = true;
-      const char *field_sep, *string = args.advance();
-      for (field_sep=NULL; string != NULL; string=field_sep)
+      if (field_sep != NULL)
       {
-        if (field_sep != NULL)
-        {
-          if (*string != ',')
-          { kdu_error e; e << "\"-icrop\" argument requires a comma-"
-            "separated list of cropping specifications."; }
-            string++; // Walk past the separator
-        }
-        if (*string == '\0')
-          break;
-        if (((field_sep = strchr(string,'}')) != NULL) &&
-            (*(++field_sep) == '\0'))
-          field_sep = NULL;
-        if ((sscanf(string,"{%d,%d,%d,%d,%d}", &(crop.x), &(crop.y), &(crop.z),
-                &(crop.width), &(crop.height)) != 5) ||
-                crop.x < 0 || crop.y < 0 || crop.z < 0 ||
-                crop.width <= 0 || crop.height <= 0)
-        { kdu_error e; e << "\"-icrop\" argument contains malformed "
-          "cropping specification.  Expected to find five comma-separated "
-            "integers, enclosed by curly braces.  The first three (x, y and z "
-            "offsets must be non-negative) and the last two (width and "
-            "height) must be strictly positive."; }
+        if (*string != ',')
+        { kdu_error e; e << "\"-icrop\" argument requires a comma-"
+          "separated list of cropping specifications."; }
+          string++; // Walk past the separator
       }
-      args.advance();
+      if (*string == '\0')
+        break;
+      if (((field_sep = strchr(string,'}')) != NULL) &&
+          (*(++field_sep) == '\0'))
+        field_sep = NULL;
+      if ((sscanf(string,"{%d,%d,%d,%d,%d}", &(crop.x), &(crop.y), &(crop.z),
+              &(crop.width), &(crop.height)) != 5) ||
+              crop.x < 0 || crop.y < 0 || crop.z < 0 ||
+              crop.width <= 0 || crop.height <= 0)
+      { kdu_error e; e << "\"-icrop\" argument contains malformed "
+        "cropping specification.  Expected to find five comma-separated "
+          "integers, enclosed by curly braces.  The first three (x, y and z "
+          "offsets must be non-negative) and the last two (width and "
+          "height) must be strictly positive."; }
     }
-    else {
-      crop.x = 0;
-      crop.y = 0;
-      crop.z = 0;
-    } 
+    args.advance();
+  }
+  else {
+    crop.x = 0;
+    crop.y = 0;
+    crop.z = 0;
+  } 
 
-    if (args.find("-fprec") != NULL) {
-      char *string = args.advance();
-      if (string == NULL)
-      { kdu_error e; e << "Malformed `-fprec' argument.  Expected a comma "
-        "separated list of non-negative forced precision values, each of "
-          "which may optionally be followed by at most an `M' suffix."; }    
-        int val = 0;
-        if ((sscanf(string,"%d",&val) != 1) || (val < 0))
-        { kdu_error e; e << "Malformed `-fprec' argument.  Expected a "
-          "non-negative integer value."; }    
-          forced_prec = val;
+  if (args.find("-fprec") != NULL) {
+    char *string = args.advance();
+    if (string == NULL)
+    { kdu_error e; e << "Malformed `-fprec' argument.  Expected a comma "
+      "separated list of non-negative forced precision values, each of "
+        "which may optionally be followed by at most an `M' suffix."; }    
+      int val = 0;
+      if ((sscanf(string,"%d",&val) != 1) || (val < 0))
+      { kdu_error e; e << "Malformed `-fprec' argument.  Expected a "
+        "non-negative integer value."; }    
+        forced_prec = val;
 
-          args.advance();
-    }
+        args.advance();
+  }
 
-    if (args.find("-minmax") != NULL)
-    {
-      for (int i = 0; i < 2; ++i) {
-        const char *string = args.advance();
-        bool succ = true;
-        for (int j = 0; j < strlen(string); ++j) {
-          if (! (std::isdigit(string[j]) || 
-                string[j] == '.' || string[j] == '-'))
-            succ = false;
-        }
-        if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
+  if (args.find("-minmax") != NULL)
+  {
+    for (int i = 0; i < 2; ++i) {
+      const char *string = args.advance();
+      bool succ = true;
+      for (int j = 0; j < strlen(string); ++j) {
+        if (! (std::isdigit(string[j]) || 
+              string[j] == '.' || string[j] == '-'))
           succ = false;
-        else if (!succ || (i == 1 && 
-              (sscanf(string, "%f", &float_maxvals) != 1)))
-          succ = false;
-
-        if (!succ)
-        { kdu_error e; e << "\"-minmax\" argument contains "
-          "malformed specification. Expected to find two comma-"
-            "separated float numbers, enclosed by curly braces. "
-            "Example: -minmax {-1.0,1.0}"; }
       }
-      args.advance();
+      if (!succ || (i == 0 && (sscanf(string, "%f", &float_minvals) != 1)))
+        succ = false;
+      else if (!succ || (i == 1 && 
+            (sscanf(string, "%f", &float_maxvals) != 1)))
+        succ = false;
+
+      if (!succ)
+      { kdu_error e; e << "\"-minmax\" argument contains "
+        "malformed specification. Expected to find two comma-"
+          "separated float numbers, enclosed by curly braces. "
+          "Example: -minmax {-1.0,1.0}"; }
     }
-    else {
-      // TODO: these values were just grabbed from the HDF5 1TB cube. A beter
-      // soln. would include including these values in the metadata of files.
-      // Also, because this data represents real values captured from the sky,
-      // we could come up with our own more general minval and maxval with
-      // respect to radio astronomy.
-      float_minvals = SAMPLES_MIN;
-      float_maxvals = SAMPLES_MAX;
-    }
+    args.advance();
+  }
+  else {
+    // TODO: these values were just grabbed from the HDF5 1TB cube. A beter
+    // soln. would include including these values in the metadata of files.
+    // Also, because this data represents real values captured from the sky,
+    // we could come up with our own more general minval and maxval with
+    // respect to radio astronomy.
+    float_minvals = SAMPLES_MIN;
+    float_maxvals = SAMPLES_MAX;
 
     std::cout << "constructing meta data box" << std::endl;
     /* Put import parameter details into JPX header as a reference */
