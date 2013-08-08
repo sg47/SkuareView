@@ -76,15 +76,17 @@ int main (int argc, char*argv[]) {
   hsize_t* extent = new hsize_t [rank];
   if (H5Sget_simple_extent_dims(dataspace, extent, NULL) != rank)
     err("Unable to get extent of dataspace in HDF5 file.");
+  std::cout << "HDF5 Dimensions: " << 
+    extent[0] << " " << extent[1] << " " << extent[2] << std::endl;
   // HDF5 cube (FREQ,DEC,RA). FREQ has slow access so, we incrementally grab a
   // full line of RA.
   hsize_t* mem_extent = new hsize_t [rank];
   hsize_t* mem_offset = new hsize_t [rank];
   for(int i = 0; i < rank; ++i)
     mem_offset[i] = 0;
-  for(int i = 0; i < rank-1; ++i)
-    mem_extent[i] = 1;
-  mem_extent[rank-1] = crop_extent[rank-1];
+  for(int i = 0; i < rank; ++i)
+    mem_extent[i] = crop_extent[i];
+  std::swap (mem_extent[0], mem_extent[2]);
   hid_t memspace = H5Screate_simple(rank, mem_extent, NULL);
   if (memspace < 0) 
     err("Unable to create memory space for HDF5 file.");
@@ -93,7 +95,6 @@ int main (int argc, char*argv[]) {
   fitsfile* ffile;
   int status = 0;
   fits_create_file(&ffile, fname, &status);
-  std::cout << status << std::endl;
   if (status != 0) 
     err("Unable to create FITS file.");
   int iomode = READWRITE;
@@ -101,13 +102,13 @@ int main (int argc, char*argv[]) {
   if (status != 0) 
     err("Unable to select iomode in FITS file.");
   // Select compression algorithm
-  fits_set_compression_type(ffile, GZIP_1, &status);
+  //fits_set_compression_type(ffile, GZIP_2, &status);
   if (status != 0)
     err("Unable to set compression type.");
   // FITS cube (RA,DEC,FREQ)
-  std::swap (crop_extent[0], crop_extent[2]);
+  std::cout << "FITS Dimensions: " << 
+    crop_extent[0] << " " << crop_extent[1] << " " << crop_extent[2] << std::endl;
   fits_create_img(ffile, FLOAT_IMG, rank, crop_extent, &status);
-  std::swap (crop_extent[0], crop_extent[2]);
   if (status != 0) 
     err("Unable to create image in FITS file.");
 
@@ -122,27 +123,22 @@ int main (int argc, char*argv[]) {
   for(int i = 0; i < rank; ++i) 
     hfpixel[i] = crop_offset[i];
 
-  for(; hfpixel[0] < crop_offset[0] + crop_extent[0]; 
-      ++lfpixel[2], ++hfpixel[0]) { // freq
-    for(; hfpixel[1] < crop_offset[1] + crop_extent[1]; 
-        ++lfpixel[1], ++hfpixel[1]) { 
-      if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, mem_offset, NULL,
-        mem_extent, NULL) < 0)
-        err("Unable to select memory space for HDF5.");
-      if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, hfpixel, NULL, 
-        mem_extent, NULL) < 0)
-        err("Unable to select stripe in HDF5.");
-      float* stripe = new float [crop_extent[2]];
-      if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
-            H5P_DEFAULT, stripe) < 0)
-        err("Unable to read from HDF5 dataset.");
-      fits_write_pix(ffile, TFLOAT, lfpixel, crop_extent[2], stripe, &status);
-      if (status != 0)
-        err("Unable to write to fits file.");
-      delete[] stripe;
-    }
-  }
+  if (H5Sselect_hyperslab(memspace, H5S_SELECT_SET, mem_offset, NULL,
+    mem_extent, NULL) < 0)
+    err("Unable to select memory space for HDF5.");
+  if (H5Sselect_hyperslab(dataspace, H5S_SELECT_SET, hfpixel, NULL, 
+    mem_extent, NULL) < 0)
+    err("Unable to select stripe in HDF5.");
+  float* stripe = new float [crop_extent[0]*crop_extent[1]*crop_extent[2]];
+  if (H5Dread(dataset, H5T_NATIVE_FLOAT, memspace, dataspace,
+        H5P_DEFAULT, stripe) < 0)
+    err("Unable to read from HDF5 dataset.");
+  fits_write_pix(ffile, TFLOAT, lfpixel, 
+      crop_extent[0]*crop_extent[1]*crop_extent[2], stripe, &status);
+  if (status != 0)
+    err("Unable to write to fits file.");
 
+  delete[] stripe;
   delete[] lfpixel;
   delete[] hfpixel;
   delete[] extent;

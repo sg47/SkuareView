@@ -711,7 +711,6 @@ int main(int argc, char *argv[])
          new float[comp_dims[n].size.x*max_stripe_heights[n]]) == NULL)
       { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
 
-    std::cout << "incremental processing" << std::endl;
     // Now for the incremental processing
     bool continues=true;
     while (continues)

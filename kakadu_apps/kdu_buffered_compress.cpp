@@ -655,7 +655,6 @@ int main(int argc, char *argv[])
 
   ifile->read_header(jp2_ultimate_tgt, args); 
 
-  std::cout << "hey there" << std::endl;
   // Collect any dimensioning/tiling parameters supplied on the command line;
   // need dimensions for raw files, if any.
   siz_params siz;

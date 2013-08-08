@@ -262,7 +262,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   }
   source_file->metadata_length = buf_idx;
   source_file->metadata_buffer[buf_idx--] = '\0';
-  std::cout << source_file->metadata_buffer << std::endl;
 
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";

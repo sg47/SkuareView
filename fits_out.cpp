@@ -100,7 +100,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   fpixel[1] = dest_file->crop.y+1;
   for(int i = 2; i < naxis; ++i)
     fpixel[i] = 1;
-  std::cout << fpixel[0] << " " << fpixel[1] << std::endl;
   /* Retrieve and use varaibles related to the input JPX image */
 
   long* naxes = new long [naxis];
@@ -108,6 +107,8 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   naxes[1] = dest_file->crop.height;
   for(int i = 2; i < naxis; ++i)
     naxes[i] = 1;
+  std::cout << "Decoding JPX image with dimensions:" << std::endl;
+  std::cout << naxes[0] << " " << naxes[1] << std::endl;
 
   // fits file names must be preceded by a '!' in order to overwrite files in
   // cfitsio
@@ -128,8 +129,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   if (status != 0)
     { kdu_error e; e << "Unable to write to FITS file."; }
 
-  std::cout << naxis << std::endl;
-  std::cout << naxes[0] << " " << naxes[1] << std::endl;
   fits_create_img(out, bitpix, naxis, naxes, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to create image FITS file."; }
@@ -145,7 +144,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   // Open FITS Header information box and write that to the FITS file
   jp2_input_box meta_box;
   meta_box.open(&src); //Open the main jp2 box
-  std::cout << meta_box.get_box_type() << std::endl;
   meta_box.close();
   meta_box.open_next(); //Open the first subbox
   while(meta_box.exists() && !(meta_box.get_box_type() == 75756964) ) {
@@ -154,7 +152,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   }
   if (meta_box.exists()) {
 
-  std::cout << "2" << std::endl;
     kdu_byte ska_uuid[16] = {0x24,0x37,0xE6,0xC0,
                             0xF2,0xB2,0x11,0xE2,
                             0xB7,0x78,0x08,0x00,
@@ -165,7 +162,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     meta_box.read(metadata_buf, meta_box.get_box_bytes());
     // check uuid
     bool correct_uuid = true;
-    std::cout << metadata_buf << std::endl;
     for(int i=0; i<16; ++i) {
       if (ska_uuid[i] != metadata_buf[i]) {
         correct_uuid = false;

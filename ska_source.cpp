@@ -13,11 +13,9 @@ void
   ska_source_file::read_header(jp2_family_tgt &tgt, kdu_args &args) 
 {
   parse_ska_args(tgt, args);
-  std::cout << "minval: " << float_minvals << std::endl;
   const char *suffix;
   in = NULL;
   if ((suffix = strchr(fname, '.')) != NULL) {
-    std::cout << suffix << std::endl;
     if ((strcmp(suffix+1,"h5")==0) || (strcmp(suffix+1,"H5")==0)) {
       in = new hdf5_in();
       in->read_header(tgt, args, this);
@@ -140,7 +138,6 @@ void
     float_minvals = SAMPLES_MIN;
     float_maxvals = SAMPLES_MAX;
 
-    std::cout << "constructing meta data box" << std::endl;
     /* Put import parameter details into JPX header as a reference */
     /* TODO: this is actually DONE - but i'm going to exclude it until I have
      * time to test it.
