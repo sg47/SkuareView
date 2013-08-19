@@ -109,6 +109,8 @@ int main (int argc, char*argv[]) {
   std::cout << "FITS Dimensions: " << 
     crop_extent[0] << " " << crop_extent[1] << " " << crop_extent[2] << std::endl;
   fits_create_img(ffile, FLOAT_IMG, rank, crop_extent, &status);
+  // One tile (i.e no tiling)
+  long int one = 1;
   if (status != 0) 
     err("Unable to create image in FITS file.");
 

@@ -120,21 +120,24 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   if (status != 0)
     { kdu_error e; e << "Unable to open input FITS file."; }
 
-  fits_get_hdu_type(in, &type, &status);
-  if (status != 0)
-    { kdu_error e; e << "Unable to get FITS type."; }
+  bool valid_hdu_found = true;
+  do {
+    valid_hdu_found = true;
+    fits_get_img_type(in, &bitpix, &status);
+    if (status != 0)
+      { kdu_error e; e << "Unable to get FITS image type."; }
 
-  fits_get_img_type(in, &bitpix, &status);
-  if (status != 0)
-    { kdu_error e; e << "Unable to get FITS image type."; }
-
-  // Get number of dimensions.
-  fits_get_img_dim(in, &naxis, &status);
-  if (status != 0)
-    { kdu_error e; e << "Unable to get dimensions of FITS image."; }
-  if (naxis < 2)
-    { kdu_error e; e << "FITS file does not contain image as it has less than "
-      "2 dimensions."; }
+    // Get number of dimensions.
+    fits_get_img_dim(in, &naxis, &status);
+    if (status != 0)
+      { kdu_error e; e << "Unable to get dimensions of FITS image."; }
+    if (naxis < 2) {
+      fits_movrel_hdu(in, 1, NULL, &status);  /* try to move to next HDU */
+      if (status != 0)
+        { kdu_error e; e << "No valid hdu found in FITS image."; }
+      valid_hdu_found = false;
+    }
+  } while (!valid_hdu_found);
 
   // Get length of each dimension.
   int maxdim = sizeof(LONGLONG); // maximum dimentions to be returned

@@ -855,6 +855,7 @@ int main(int argc, char *argv[])
     double samples_per_second = total_samples / processing_time;
     pretty_cout << "Processing time = " << processing_time << " s; i.e., ";
     pretty_cout << samples_per_second << " samples/s\n";
+    pretty_cout << "Reading time = " << reading_time << " s.\n";
     pretty_cout << "End-to-end time (including file reading) = "
       << processing_time + reading_time << " s.\n";
     if (num_threads == 0)

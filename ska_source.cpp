@@ -21,7 +21,8 @@ void
       in->read_header(tgt, args, this);
     }
     if ((strcmp(suffix+1,"fits")==0 || (strcmp(suffix+1,"FITS")==0)) ||
-        (strcmp(suffix+1,"imfits")==0 || (strcmp(suffix+1,"IMFITS")==0))) {
+        (strcmp(suffix+1,"imfits")==0 || (strcmp(suffix+1,"IMFITS")==0)) ||
+        (strcmp(suffix+1,"fit")==0 || (strcmp(suffix+1,"FIT")==0))) {
       in = new fits_in();
       in->read_header(tgt, args, this);
     }
