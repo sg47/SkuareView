@@ -344,7 +344,7 @@ hdf5_in::~hdf5_in()
 
 void
   hdf5_in::read_stripe(int height, float *buf,
-    ska_source_file * const source_file)
+    ska_source_file * const source_file, int component)
 /* Reads in a stripe from the image and places it into buf. We make the rather
  * dangerous assumption that the stripe height provided will never exceed the
  * bounds of the image from our current index in the cube. */

@@ -630,12 +630,15 @@ int main(int argc, char *argv[])
   for (n=0; n < num_components; n++)
     codestream.get_dims(n,comp_dims[n],true);
 
-  // Next, prepare the output files
-  n=0;
-  ofile->crop.width=comp_dims[n].size.x;
-  ofile->crop.height=comp_dims[n].size.y;
-  ofile->crop.x=comp_dims[n].pos.x;
-  ofile->crop.y=comp_dims[n].pos.y;
+  // Next, prepare the output file
+  // Since we are treating each component as a frame, the first frame should
+  // have the same width and height as all the frames.
+  ofile->crop.width=comp_dims[0].size.x;
+  ofile->crop.height=comp_dims[0].size.y;
+  ofile->crop.depth=num_components;
+  ofile->crop.x=0;
+  ofile->crop.y=0;
+  ofile->crop.z=0;
   bool flip_vertically = false;
 
   if (num_components == 0)
@@ -692,6 +695,7 @@ int main(int argc, char *argv[])
   int *precisions = new int[num_components];
   int *stripe_heights = new int[num_components];
   int *max_stripe_heights = new int[num_components];
+
   kdu_stripe_decompressor decompressor;
   decompressor.start(codestream,force_precise,want_fastest,
                      env_ref,NULL,env_dbuf_height);
@@ -707,9 +711,10 @@ int main(int argc, char *argv[])
     n=0;
     float** stripe_bufs = new float *[num_components];
 
-    if ((stripe_bufs[n] =
-         new float[comp_dims[n].size.x*max_stripe_heights[n]]) == NULL)
-      { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
+    for(n = 0; n < num_components; ++n)
+      if ((stripe_bufs[n] =
+           new float[comp_dims[n].size.x*max_stripe_heights[n]]) == NULL)
+        { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
 
     // Now for the incremental processing
     bool continues=true;
@@ -732,7 +737,8 @@ int main(int argc, char *argv[])
         // compressed source.
         if (cpu)
           processing_time += timer.get_ellapsed_seconds();
-        ofile->write_stripe(stripe_heights[n],stripe_bufs[n]);
+        for(n = 0; n < num_components; ++n)
+        ofile->write_stripe(stripe_heights[n],stripe_bufs[n], n);
         if (cpu)
           writing_time += timer.get_ellapsed_seconds();
       }

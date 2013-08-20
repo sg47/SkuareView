@@ -173,14 +173,14 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
       fpixel[2] = 1;
     source_file->crop.width = naxes[0];
     source_file->crop.height = naxes[1];
+    source_file->crop.depth = naxes[2];
   }
-    if (naxis > 3)
-      fpixel[3] = 1;
+  if (naxis > 3)
+    fpixel[3] = 1;
   free(naxes);
 
   double scale = 1.0;
   double zero = 0.0;
-
 
   fits_set_bscale(in, scale, zero, &status); // Setting up the scaling
   if (status != 0)
@@ -232,7 +232,8 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   source_file->bytes_per_sample = source_file->precision / 8;
 
   //total number ot rows to read
-  source_file->num_unread_rows = source_file->crop.height; 
+  num_unread_rows = source_file->crop.height * 
+    source_file->crop.depth;
 
   // Read header
   fits_get_hdrspace(in, &nkeys, NULL, &status);
@@ -289,7 +290,8 @@ fits_in::~fits_in()
 /*****************************************************************************/
 
 void
-fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file)
+fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file,
+    int component)
 {
   int anynul = 0;
   unsigned char nulval = 0;
@@ -324,8 +326,12 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file)
   // increment the position in FITS file
   fpixel[0] = source_file->crop.x + 1; // read from the begining of line
   fpixel[1] += height;
+  if (fpixel[1] > source_file->crop.y + 1 + source_file->crop.height) {
+    fpixel[1] = source_file->crop.y;
+    fpixel[2]++;
+  }
 
-  num_unread_rows--;
+  num_unread_rows -= height;
 }
 
 /*****************************************************************************/

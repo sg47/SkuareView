@@ -79,7 +79,7 @@ class hdf5_in : public ska_source_file_base {
     void read_header(jp2_family_tgt &tgt, kdu_args &args, 
         ska_source_file * const source_file);
     void read_stripe(int height, float *buf, 
-        ska_source_file * const source_file);
+        ska_source_file * const source_file, int component);
   private: // Members describing the organization of the HDF5 data
     hid_t file; // File handle for the HDF5 handle
     hid_t dataset;
@@ -118,7 +118,7 @@ class hdf5_out : public ska_dest_file_base {
     void write_header(jp2_family_src &src, kdu_args &args,
         ska_dest_file* const dest_file);      
     void write_stripe(int height, float *buf,
-        ska_dest_file* const dest_file);
+        ska_dest_file* const dest_file, int component);
   private: // Data
     // Describes the HDF5 cube we are writing to
     hid_t file; // File handle for the HDF5 file

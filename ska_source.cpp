@@ -38,14 +38,14 @@ void
 /*****************************************************************************/
 
 void
-  ska_source_file::read_stripe(int height, float *buf)
+  ska_source_file::read_stripe(int height, float *buf, int component)
 {
   // "this" is passed as a method of mimicing inheritance
   // the reason why have to do it this way is because "kdu_buffered_compress"
   // won't know which implementation to use for which file format. And we want
   // to minimize any changes we make to the app, as new versions of Kakadu
   // may be released.
-  in->read_stripe(height, buf, this);
+  in->read_stripe(height, buf, this, component);
 }
 
 /*****************************************************************************/
@@ -73,10 +73,10 @@ void
       if (((field_sep = strchr(string,'}')) != NULL) &&
           (*(++field_sep) == '\0'))
         field_sep = NULL;
-      if ((sscanf(string,"{%d,%d,%d,%d,%d}", &(crop.x), &(crop.y), &(crop.z),
-              &(crop.width), &(crop.height)) != 5) ||
+      if ((sscanf(string,"{%d,%d,%d,%d,%d,%d}", &(crop.x), &(crop.y), &(crop.z),
+              &(crop.width), &(crop.height), &(crop.depth)) != 6) ||
               crop.x < 0 || crop.y < 0 || crop.z < 0 ||
-              crop.width <= 0 || crop.height <= 0)
+              crop.width <= 0 || crop.height <= 0 || crop.depth <= 0)
       { kdu_error e; e << "\"-icrop\" argument contains malformed "
         "cropping specification.  Expected to find five comma-separated "
           "integers, enclosed by curly braces.  The first three (x, y and z "

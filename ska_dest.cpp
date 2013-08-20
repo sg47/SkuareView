@@ -35,14 +35,14 @@ ska_dest_file::write_header(jp2_family_src &src, kdu_args &args)
 /*****************************************************************************/
 
 void
-ska_dest_file::write_stripe(int height, float *buf)
+ska_dest_file::write_stripe(int height, float *buf, int component)
 {
   // "this" is passed as a method of mimicing inheritance
   // the reason why have to do it this way is because "kdu_buffered_compress"
   // won't know which implementation to use for which file format. And we want
   // to minimize any changes we make to the app, as new versions of Kakadu
   // may be released.
-  out->write_stripe(height, buf, this);
+  out->write_stripe(height, buf, this, component);
 }
 
 /*****************************************************************************/

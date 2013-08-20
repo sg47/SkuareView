@@ -48,7 +48,7 @@ class ska_source_file_base {
     virtual void read_header(jp2_family_tgt &tgt, kdu_args &args,
         ska_source_file* const source_file) = 0;
     virtual void read_stripe(int height, float *buf, 
-        ska_source_file* const source_file) = 0;
+        ska_source_file* const source_file, int component) = 0;
 };
 
 class ska_source_file {
@@ -73,7 +73,7 @@ class ska_source_file {
       delete[] metadata_buffer;
     }
     void read_header(jp2_family_tgt &tgt, kdu_args &args);
-    void read_stripe(int height, float *buf);
+    void read_stripe(int height, float *buf, int component);
     void write_metadata(jp2_family_tgt &tgt);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
@@ -115,7 +115,7 @@ class ska_dest_file_base {
     virtual void write_header(jp2_family_src &src, kdu_args &args,
         ska_dest_file* const dest_file) = 0;
     virtual void write_stripe(int height, float *buf, 
-        ska_dest_file* const dest_file) = 0;
+        ska_dest_file* const dest_file, int component) = 0;
 };
 
 class ska_dest_file {
@@ -138,7 +138,7 @@ class ska_dest_file {
       delete out;
     }
     void write_header(jp2_family_src &src, kdu_args &args);
-    void write_stripe(int height, float *buf);
+    void write_stripe(int height, float *buf, int component);
   private: // Private functions
     /* Parses generic arguments used by the SKA encoder */
     void parse_ska_args(jp2_family_src &src, kdu_args &args);

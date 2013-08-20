@@ -356,7 +356,8 @@ hdf5_out::~hdf5_out()
 /*****************************************************************************/
 
 void
-hdf5_out::write_stripe(int height, float *buf, ska_dest_file* const dest_file)
+hdf5_out::write_stripe(int height, float *buf, ska_dest_file* const dest_file, 
+    int component)
 {
   if (num_unwritten_rows == 0)
     { kdu_error e; e << "Attempting to write too many lines to image."; }

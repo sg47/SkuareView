@@ -158,7 +158,7 @@ class fits_in : public ska_source_file_base {
     void read_header(jp2_family_tgt &tgt, kdu_args &args,
         ska_source_file* const source_file);
     void read_stripe(int height, float *buf,
-        ska_source_file* const source_file);
+        ska_source_file* const source_file, int component);
   private: // Members describing the organization of the FITS data
     fitsfile *in;     //pointer to open FITS image
     int status;    // returned status of FITS functions
@@ -188,7 +188,7 @@ class fits_out : public ska_dest_file_base {
     void write_header(jp2_family_src &src, kdu_args &args,
         ska_dest_file* const dest_file);
     void write_stripe(int height, float *buf,
-        ska_dest_file* const dest_file);
+        ska_dest_file* const dest_file, int component);
   private: // Private functions
     bool parse_fits_parameters(kdu_args &args);
   private: // FITS file descriptions 

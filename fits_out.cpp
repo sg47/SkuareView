@@ -105,10 +105,11 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   long* naxes = new long [naxis];
   naxes[0] = dest_file->crop.width;
   naxes[1] = dest_file->crop.height;
-  for(int i = 2; i < naxis; ++i)
+  naxes[2] = dest_file->crop.depth;
+  for(int i = 3; i < naxis; ++i)
     naxes[i] = 1;
   std::cout << "Decoding JPX image with dimensions:" << std::endl;
-  std::cout << naxes[0] << " " << naxes[1] << std::endl;
+  std::cout << naxes[0] << " " << naxes[1] << " " << naxes[2] << std::endl;
 
   // fits file names must be preceded by a '!' in order to overwrite files in
   // cfitsio
@@ -138,7 +139,8 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   if (status != 0)
     { kdu_error e; e << "Unable to write min/max keywords to FITS file."; }
 
-  num_unwritten_rows = dest_file->crop.height;
+  num_unwritten_rows = dest_file->crop.height * dest_file->crop.depth;
+  std::cout << num_unwritten_rows << std::endl;
   delete[] naxes;
 
   // Open FITS Header information box and write that to the FITS file
@@ -211,7 +213,8 @@ fits_out::~fits_out()
 /*****************************************************************************/
 
 void
-fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file)
+fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file,
+    int component)
 {
   int stripe_elements = dest_file->crop.width * height;
   // "buf" will be of size "stripe_elements * bytes_per_sample"
@@ -224,6 +227,10 @@ fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file)
 
   // increment the position in FITS file
   fpixel[1] += height; 
+  if (fpixel[1] > dest_file->crop.height) {
+    fpixel[1] = 1;
+    fpixel[2]++;
+  }
 
   num_unwritten_rows -= height;
 }

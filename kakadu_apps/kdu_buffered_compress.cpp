@@ -694,27 +694,28 @@ int main(int argc, char *argv[])
   // source files).
   int m_components=0;  siz.get(Mcomponents,0,0,m_components);
   kdu_long total_samples=0, total_pixels=0;
-  int n = 0, num_components=0;
+  int num_components=ifile->crop.depth; // each component is a frame
 
-  siz.set(Sdims,num_components,0,ifile->crop.height);
-  siz.set(Sdims,num_components,1,ifile->crop.width);
-  if (m_components > 0) {
-    siz.set(Msigned,num_components,0,ifile->is_signed);
-    siz.set(Mprecision,num_components,0,ifile->precision);
+  for (int i = 0; i < num_components; ++i) {
+    siz.set(Sdims,i,0,ifile->crop.height);
+    siz.set(Sdims,i,1,ifile->crop.width);
+    if (m_components > 0) {
+      siz.set(Msigned,i,0,ifile->is_signed);
+      siz.set(Mprecision,i,0,ifile->precision);
+    }
+    else {
+      siz.set(Ssigned,i,0,ifile->is_signed);
+      siz.set(Sprecision,i,0,ifile->precision);
+    }
+    kdu_long samples = ifile->crop.width; samples *= ifile->crop.height;
+    total_samples += samples;
+    total_pixels = (samples > total_pixels)?samples:total_pixels;
   }
-  else {
-    siz.set(Ssigned,num_components,0,ifile->is_signed);
-    siz.set(Sprecision,num_components,0,ifile->precision);
-  }
-  kdu_long samples = ifile->crop.width; samples *= ifile->crop.height;
-  total_samples += samples;
-  total_pixels = (samples > total_pixels)?samples:total_pixels;
 
   int c_components=0;
   if (!siz.get(Scomponents,0,0,c_components))
-    siz.set(Scomponents,0,0,c_components=++num_components);
+    siz.set(Scomponents,0,0,c_components=num_components);
   siz.finalize_all();
-  std::cout << num_components << std::endl;
 
   // Start the timer
   kdu_clock timer;
@@ -810,7 +811,8 @@ int main(int argc, char *argv[])
   int *precisions = new int[num_components];
   int *stripe_heights = new int[num_components];
   int *max_stripe_heights = new int[num_components];
-  precisions[n] = ifile->precision;
+  float **stripe_bufs = new float *[num_components];
+  bool *is_signed = new bool [num_components];
 
   kdu_stripe_compressor compressor;
   compressor.start(codestream,num_layer_sizes,layer_sizes,NULL,0,false,
@@ -820,33 +822,37 @@ int main(int argc, char *argv[])
       absolute_max_stripe_height,
       stripe_heights,max_stripe_heights);
 
-  if (ifile->reversible) {
+  int n = 0;
+  for (n=0; n < num_components; n++) {
+    if ((stripe_bufs[n]=new float[ifile->crop.width*max_stripe_heights[n]])==NULL)
+      { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
+    else {
+      precisions[n] = ifile->precision;
+      is_signed[n] = ifile->is_signed;
+    }
+  }
 
+  if (ifile->reversible) {
+    pretty_cout << "Reversible compression not yet supported by this "
+      << "mini-tool\n";
   }
   else {
-    float **stripe_bufs = new float *[num_components];
-    bool stripes_signed = true;
-
     // Now for the incremental processing
     do {
       compressor.get_recommended_stripe_heights(preferred_min_stripe_height,
           absolute_max_stripe_height,
           stripe_heights,NULL);
+
       if (cpu)
         processing_time += timer.get_ellapsed_seconds();
-      assert(stripe_heights[n] <= max_stripe_heights[n]);
-      stripe_bufs[n] = new float[stripe_heights[n]*ifile->crop.width];
-
-      ifile->read_stripe(stripe_heights[n],stripe_bufs[n]);
-
+      for (n=0; n < num_components; n++) {
+        assert(stripe_heights[n] <= max_stripe_heights[n]);
+        ifile->read_stripe(stripe_heights[n],stripe_bufs[n],n);
+      }
       if (cpu)
         reading_time += timer.get_ellapsed_seconds();
     } while (compressor.push_stripe(stripe_bufs,stripe_heights,NULL,NULL,
-          NULL,NULL,flush_period));
-
-    for (n=0; n < num_components; n++)
-      delete[] stripe_bufs[n];
-    delete[] stripe_bufs;
+          NULL,is_signed,flush_period));
   }
 
   if (cpu)
@@ -879,6 +885,9 @@ int main(int argc, char *argv[])
   output->close();
   if (jp2_ultimate_tgt.exists())
     jp2_ultimate_tgt.close();
+  for (n=0; n < num_components; n++)
+    delete[] stripe_bufs[n];
+  delete[] stripe_bufs;
   delete[] precisions;
   delete[] stripe_heights;
   delete[] max_stripe_heights;
