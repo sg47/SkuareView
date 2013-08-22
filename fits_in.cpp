@@ -270,6 +270,11 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
   std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
+
+
+  frame_fheight = new long [source_file->crop.depth];
+  for(int i = 0; i < source_file->crop.depth; ++i)
+    frame_fheight[i] = 0;
 }
 
 /*****************************************************************************/
@@ -283,6 +288,7 @@ fits_in::~fits_in()
   fits_close_file(in, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to close FITS image!"; }
+  delete[] frame_fheight;
 }
 
 /*****************************************************************************/
@@ -295,16 +301,22 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file,
 {
   int anynul = 0;
   unsigned char nulval = 0;
-  LONGLONG stripe_elements = source_file->crop.width * height;
+  LONGLONG stripe_elements = source_file->crop.width;
+  fpixel[0] = source_file->crop.x + 1; // read from the begining of line
+  fpixel[1] = frame_fheight[component]+1;
+  fpixel[2] = component+1;
 
-  switch (bitpix) { 
-    case FLOAT_IMG: 
-      fits_read_pixll(in, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
-          &anynul, &status);
-      break;
+  for(int i = 0; i < height; i++, buf+=source_file->crop.width, fpixel[1]++) {
+    switch (bitpix) { 
+      case FLOAT_IMG: 
+        fits_read_pixll(in, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
+            &anynul, &status);
+        break;
+    }
+    if (status != 0)
+      { kdu_error e; e << "FITS file terminated prematurely!"; }
   }
-  if (status != 0)
-    { kdu_error e; e << "FITS file terminated prematurely!"; }
+  buf -= source_file->crop.width * height;
 
   // for undefined pixels the buffer is being filled with -nan,
   // with my current compiler isnan(-nan) is returning false.
@@ -320,17 +332,11 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file,
   if (uf.b == 4294967295)
     buf[0] = source_file->float_minvals;
 
-  irreversible_normalize(buf, stripe_elements, source_file->is_signed, 
+  irreversible_normalize(buf, stripe_elements*height, source_file->is_signed, 
       source_file->float_minvals, source_file->float_maxvals, false);
 
   // increment the position in FITS file
-  fpixel[0] = source_file->crop.x + 1; // read from the begining of line
-  fpixel[1] += height;
-  if (fpixel[1] > source_file->crop.y + 1 + source_file->crop.height) {
-    fpixel[1] = source_file->crop.y;
-    fpixel[2]++;
-  }
-
+  frame_fheight[component] += height;
   num_unread_rows -= height;
 }
 

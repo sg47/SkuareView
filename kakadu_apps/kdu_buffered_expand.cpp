@@ -368,6 +368,38 @@ static ska_dest_file*
   else
     { kdu_error e; e << "You must supply an input file name."; }
 
+  if (args.find("-o") != NULL)
+    {
+      const char *string = args.advance();
+      if (string == NULL)
+        { kdu_error e; e << "\"-o\" argument requires a parameter string."; }
+      ofile = new ska_dest_file;
+      ofile->fname = new char[strlen(string)+1];
+      strcpy(ofile->fname,string);
+      args.advance();
+    }
+
+  if (args.find("-int_region")) 
+    {
+      const char *field_sep, *string = args.advance();
+      if ((sscanf(string,"{%d,%d},{%d,%d}", &(ofile->crop.x), &(ofile->crop.y), 
+              &(ofile->crop.width), &(ofile->crop.height)) != 4) ||
+              ofile->crop.x < 0 || ofile->crop.y < 0 || 
+              ofile->crop.width <= 0 || ofile->crop.height <= 0)
+      { kdu_error e; e << "i don't even care."; }
+      ofile->crop.width -= ofile->crop.x;
+      ofile->crop.height -= ofile->crop.y;
+      region.size = kdu_coords(ofile->crop.width, ofile->crop.height);
+      region.pos = kdu_coords(ofile->crop.x, ofile->crop.y);
+      ofile->crop.x = 0;
+      ofile->crop.y = 0;
+      args.advance();
+    }
+  else 
+  {
+    ofile->crop.width = -1;
+  }
+
   if (args.find("-rate") != NULL)
     {
       const char *string = args.advance();
@@ -477,16 +509,6 @@ static ska_dest_file*
       force_precise = true;
     }
 
-  if (args.find("-o") != NULL)
-    {
-      const char *string = args.advance();
-      if (string == NULL)
-        { kdu_error e; e << "\"-o\" argument requires a parameter string."; }
-      ofile = new ska_dest_file;
-      ofile->fname = new char[strlen(string)+1];
-      strcpy(ofile->fname,string);
-      args.advance();
-    }
 
   return ofile;
 }
@@ -620,25 +642,29 @@ int main(int argc, char *argv[])
                                           KDU_WANT_OUTPUT_COMPONENTS);
     }
 
-        // If you wish to have rotation/transposition folded into the
-        // decompression process automatically, this is the place to call
-        // `kdu_codestream::change_appearance'.
+  // If you wish to have rotation/transposition folded into the
+  // decompression process automatically, this is the place to call
+  // `kdu_codestream::change_appearance'.
 
   // Find the dimensions of each image component we will be decompressing
   int n, num_components = codestream.get_num_components(true);
   kdu_dims *comp_dims = new kdu_dims[num_components];
   for (n=0; n < num_components; n++)
     codestream.get_dims(n,comp_dims[n],true);
+  if (ofile->crop.width == -1) {
+    ofile->crop.width = comp_dims[0].size.x;
+    ofile->crop.height = comp_dims[0].size.y;
+    ofile->crop.depth = num_components;
+    ofile->crop.x = 0;
+    ofile->crop.y = 0;
+    ofile->crop.z = 0;
+  }
 
   // Next, prepare the output file
   // Since we are treating each component as a frame, the first frame should
   // have the same width and height as all the frames.
-  ofile->crop.width=comp_dims[0].size.x;
-  ofile->crop.height=comp_dims[0].size.y;
   ofile->crop.depth=num_components;
-  ofile->crop.x=0;
-  ofile->crop.y=0;
-  ofile->crop.z=0;
+  ofile->crop.z=skip_components;
   bool flip_vertically = false;
 
   if (num_components == 0)
@@ -718,6 +744,7 @@ int main(int argc, char *argv[])
 
     // Now for the incremental processing
     bool continues=true;
+    int total_stripes = ofile->crop.height;
     while (continues)
       { 
         decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,

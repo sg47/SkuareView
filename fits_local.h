@@ -175,6 +175,7 @@ class fits_in : public ska_source_file_base {
     int bitpix;
     int type;
     int naxis;
+    long* frame_fheight;
     int num_unread_rows;
 };
 
@@ -200,6 +201,7 @@ class fits_out : public ska_dest_file_base {
     int bitpix;
     int type;
     int naxis;
+    long* frame_fheight;
 
   private: // Writing descriptions
     int num_unwritten_rows;

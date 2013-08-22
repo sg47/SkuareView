@@ -91,14 +91,15 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   dest_file->reversible = false;
   dest_file->bytes_per_sample = 4;
   bitpix = FLOAT_IMG;
-  naxis = 4; 
+  naxis = 3; 
   num_unwritten_rows = 0;
   status = 0;
 
   fpixel = new LONGLONG [naxis];
   fpixel[0] = dest_file->crop.x+1;
   fpixel[1] = dest_file->crop.y+1;
-  for(int i = 2; i < naxis; ++i)
+  fpixel[2] = dest_file->crop.z+1;
+  for(int i = 3; i < naxis; ++i)
     fpixel[i] = 1;
   /* Retrieve and use varaibles related to the input JPX image */
 
@@ -117,13 +118,13 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   fitsfname[0] = '!';
   for(int i = 0; dest_file->fname[i] != '\0'; ++i) 
     fitsfname[i+1] = dest_file->fname[i];
-  delete[] dest_file->fname;
   dest_file->fname = fitsfname;
 
   // Create destination FITS file
   fits_create_file(&out, dest_file->fname, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to create FITS file."; }
+  delete[] fitsfname;
 
   int iomode = READWRITE;
   fits_file_mode(out, &iomode, &status);
@@ -140,7 +141,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     { kdu_error e; e << "Unable to write min/max keywords to FITS file."; }
 
   num_unwritten_rows = dest_file->crop.height * dest_file->crop.depth;
-  std::cout << num_unwritten_rows << std::endl;
   delete[] naxes;
 
   // Open FITS Header information box and write that to the FITS file
@@ -189,7 +189,10 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     }
   }
   meta_box.close();
-  
+
+  frame_fheight = new long [dest_file->crop.depth];
+  for (int i = 0; i < dest_file->crop.depth; ++i)
+    frame_fheight[i] = 1;
 }
 
 /*****************************************************************************/
@@ -202,6 +205,7 @@ fits_out::~fits_out()
     { kdu_error e; e << "Not all rows were written to file."; }
 
   delete[] fpixel;
+  delete[] frame_fheight;
 
   fits_close_file(out, &status);
   if (status != 0)
@@ -221,16 +225,19 @@ fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file,
   irreversible_renormalize(buf, stripe_elements, dest_file->samples_min,
       dest_file->samples_max, LINEAR);
 
-  fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
-  if (status != 0)
-    { kdu_error e; e << "FITS file terminated prematurely!"; }
+  stripe_elements = dest_file->crop.width;
+  fpixel[0] = dest_file->crop.x + 1; // read from the begining of line
+  fpixel[1] = frame_fheight[component];
+  fpixel[2] = component+1;
 
-  // increment the position in FITS file
-  fpixel[1] += height; 
-  if (fpixel[1] > dest_file->crop.height) {
-    fpixel[1] = 1;
-    fpixel[2]++;
+  for(int i = 0; i < height && fpixel[1] <= dest_file->crop.height; 
+      i++, buf+=dest_file->crop.width, fpixel[1]++) {
+    fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);
+    if (status != 0)
+      { kdu_error e; e << "FITS file terminated prematurely!"; }
   }
+  buf -= dest_file->crop.width * height;
 
   num_unwritten_rows -= height;
+  frame_fheight[component] += height;
 }

@@ -52,6 +52,7 @@ ska_dest_file::write_stripe(int height, float *buf, int component)
 void
   ska_dest_file::parse_ska_args(jp2_family_src &src, kdu_args &args)
 {
+
   //TODO: read JP2 header
   samples_min = SAMPLES_MIN;
   samples_max = SAMPLES_MAX;
