@@ -387,8 +387,6 @@ static ska_dest_file*
               ofile->crop.x < 0 || ofile->crop.y < 0 || 
               ofile->crop.width <= 0 || ofile->crop.height <= 0)
       { kdu_error e; e << "i don't even care."; }
-      ofile->crop.width -= ofile->crop.x;
-      ofile->crop.height -= ofile->crop.y;
       region.size = kdu_coords(ofile->crop.width, ofile->crop.height);
       region.pos = kdu_coords(ofile->crop.x, ofile->crop.y);
       ofile->crop.x = 0;
@@ -762,6 +760,7 @@ int main(int argc, char *argv[])
         // All the stripes still get fully decompressed into memory
         // buffers, but the only disk I/O is that due to reading of the
         // compressed source.
+
         if (cpu)
           processing_time += timer.get_ellapsed_seconds();
         for(n = 0; n < num_components; ++n)
@@ -770,6 +769,7 @@ int main(int argc, char *argv[])
           writing_time += timer.get_ellapsed_seconds();
       }
       decompressor.finish();
+      std::cout << "decomp fin" << std::endl;
 
       for (n=0; n < num_components; n++)
         delete[] stripe_bufs[n];

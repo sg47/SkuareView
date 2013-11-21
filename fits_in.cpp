@@ -101,7 +101,7 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
 /* ========================================================================= */
 
 /*****************************************************************************/
-/*                               fits_in::fits_in                            */
+/*                           read_header::fits_in                            */
 /*****************************************************************************/
 
 void
@@ -271,7 +271,6 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
   std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
 
-
   frame_fheight = new long [source_file->crop.depth];
   for(int i = 0; i < source_file->crop.depth; ++i)
     frame_fheight[i] = 0;
@@ -334,6 +333,7 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file,
 
   irreversible_normalize(buf, stripe_elements*height, source_file->is_signed, 
       source_file->float_minvals, source_file->float_maxvals, false);
+
 
   // increment the position in FITS file
   frame_fheight[component] += height;

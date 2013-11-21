@@ -80,8 +80,8 @@ void
       { kdu_error e; e << "\"-icrop\" argument contains malformed "
         "cropping specification.  Expected to find five comma-separated "
           "integers, enclosed by curly braces.  The first three (x, y and z "
-          "offsets must be non-negative) and the last two (width and "
-          "height) must be strictly positive."; }
+          "offsets must be non-negative) and the last two (width, "
+          "height and depth) must be strictly positive."; }
     }
     args.advance();
   }
@@ -139,7 +139,7 @@ void
     float_minvals = SAMPLES_MIN;
     float_maxvals = SAMPLES_MAX;
 
-    /* Put import parameter details into JPX header as a reference */
+    /* Put important parameter details into JPX header as a reference */
     /* TODO: this is actually DONE - but i'm going to exclude it until I have
      * time to test it.
     kdu_byte h5_uuid[16] = {0x72,0xF7,0x1C,0x30,

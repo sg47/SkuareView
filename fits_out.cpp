@@ -124,7 +124,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   fits_create_file(&out, dest_file->fname, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to create FITS file."; }
-  delete[] fitsfname;
 
   int iomode = READWRITE;
   fits_file_mode(out, &iomode, &status);
@@ -134,11 +133,6 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
   fits_create_img(out, bitpix, naxis, naxes, &status);
   if (status != 0)
     { kdu_error e; e << "Unable to create image FITS file."; }
-
-  fits_write_key(out, TFLOAT, "DATAMIN", &(dest_file->samples_min), NULL, &status);
-  fits_write_key(out, TFLOAT, "DATAMAX", &(dest_file->samples_max), NULL, &status);
-  if (status != 0)
-    { kdu_error e; e << "Unable to write min/max keywords to FITS file."; }
 
   num_unwritten_rows = dest_file->crop.height * dest_file->crop.depth;
   delete[] naxes;
@@ -173,12 +167,16 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     if (correct_uuid) {
       char* record = new char [80]; // max length of a FITS record
       int record_idx = 0;
+      int nkeys = 0;
+      fits_get_hdrspace(out, &nkeys, NULL, &status);
+      int prev_keys = nkeys;
       for (int i=16; i<contents_length; ++i) {
         if (metadata_buf[i] == '?') {
           fits_write_record(out, record, &status);
           if (status != 0)
             { kdu_error e; e << "Unable to write record " << record; }
           record_idx = 0;
+          nkeys++;
         }
         else {
           record[record_idx++] = metadata_buf[i];
@@ -186,9 +184,38 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
           record[record_idx] = '\0';
         }
       }
+      for (int i=1; i<nkeys-prev_keys; i++) {
+        // read for data min and max value
+        fits_read_keyn(out,i,keyname,keyvalue,keycomment, &status);
+          if (status != 0)
+            { kdu_error e; e << "Unable to write record " << record; }
+
+        // overwrite default min and max values for the entire image
+        if (!strcmp(keyname, "DATAMIN")) 
+          sscanf(keyvalue, "%lf", &dest_file->samples_min);
+        if (!strcmp(keyname, "DATAMAX")) 
+          sscanf(keyvalue, "%lf", &dest_file->samples_max);
+        char del_key[4][10] = {"NAXIS1", "NAXIS2", "NAXIS3", "NAXIS"};
+        for(int j = 0; j < 4; ++j)
+          if (!strcmp(keyname, del_key[j]))  {
+             fits_delete_key (out, del_key[j], &status);
+          }
+      }
+    } else {
+      fits_write_key(out, TFLOAT, "DATAMIN", &(dest_file->samples_min), NULL, 
+          &status);
+      fits_write_key(out, TFLOAT, "DATAMAX", &(dest_file->samples_max), NULL, 
+          &status);
+      if (status != 0)
+      { kdu_error e; e << "Unable to write min/max keywords to FITS file."; }
     }
+
   }
   meta_box.close();
+
+  std::cout << "\nThe following values of MIN and MAX will be used:\n";
+  std::cout << "DATAMIN = " << dest_file->samples_min << "\n";
+  std::cout << "DATAMAX = " << dest_file->samples_max << "\n";
 
   frame_fheight = new long [dest_file->crop.depth];
   for (int i = 0; i < dest_file->crop.depth; ++i)
@@ -230,6 +257,7 @@ fits_out::write_stripe(int height, float* buf, ska_dest_file* const dest_file,
   fpixel[1] = frame_fheight[component];
   fpixel[2] = component+1;
 
+  
   for(int i = 0; i < height && fpixel[1] <= dest_file->crop.height; 
       i++, buf+=dest_file->crop.width, fpixel[1]++) {
     fits_write_pixll(out, TFLOAT, fpixel, stripe_elements, buf, &status);

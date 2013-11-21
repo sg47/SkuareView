@@ -202,6 +202,9 @@ class fits_out : public ska_dest_file_base {
     int type;
     int naxis;
     long* frame_fheight;
+    char keyname[FLEN_CARD];  //fits
+    char keyvalue[FLEN_CARD];  //fits
+    char keycomment[FLEN_CARD];  //fits
 
   private: // Writing descriptions
     int num_unwritten_rows;
