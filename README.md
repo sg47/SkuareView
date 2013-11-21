@@ -1,10 +1,12 @@
-# This software extends the kakadu kdu_compress and kdu_expand app to work for FITS and HDF5 files.
-# The software has not been tested to a complete extent.
+Author: Sean Peters
+Contact: sean.peters.au@gmail.com
+Feel free to contact me for any questions.
 
-# NOTE: The HDF5 implemented to convert ICRARs HDF5 image format has precision problems with large images.
-# A solution to this is being researched at this time (February 2013).
+This software extends the kakadu kdu_compress and kdu_expand app to work for FITS and HDF5 files.
+The software has not been tested to a complete extent.
 
-# File details
+File details
+============
 
 fits_local.h
     Header file with declarations for fits_in.cpp and fits_out.cpp
@@ -29,11 +31,12 @@ find_minmax.c
     floating points values within a 3D HDF5 cube.
 
 
-# Compilation instructions are specified within the makefile.
+Compilation instructions are specified within the makefile.
 
-# This is currently a very brief instruction on what modificaitons need to be
-# made to the Kakadu Library and Kakadu Apps in order for SkuareView-NGAS-plugin
-# to compile. They assume an understanding of the software.
+This is currently a very brief instruction on what modificaitons need to be
+made to the Kakadu Library and Kakadu Apps in order for SkuareView-NGAS-plugin
+to compile. They assume an understanding of the software.
+==============================================================================
 
 kdu_image.h
     Add another constructor declaration for kdu_image_in that includes a kdu_args parameter.

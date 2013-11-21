@@ -24,7 +24,7 @@ EXPAND=$(APPS)/kdu_expand
 IMAGE=$(APPS)/image
 
 # Libraries
-KDU_LIBS=-lkdu_v72R -lkdu_a72R -lkdu -lm -lnsl -lkdu_aux
+KDU_LIBS=-lkdu_v72R -lkdu_a72R -lkdu -lm -lnsl -lkdu_aux # just the kakadu library
 FITS_LIB=-lcfitsio
 HDF5_LIBS=-lhdf5 -lhdf5_hl -lz -lsz
 CASA_LIBS=
