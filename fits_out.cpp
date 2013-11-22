@@ -85,7 +85,8 @@ fits_out::write_header(jp2_family_src &src, kdu_args &args,
     ska_dest_file* const dest_file)
 {
   // Initialize state information in case we have to clean up prematurely
-  //TODO: make dynamic
+  //TODO: make dynamic (these parmaters currently only work 32 bit floating
+  //point samples)
   dest_file->is_signed = true;
   dest_file->precision = 32;
   dest_file->reversible = false;

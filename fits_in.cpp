@@ -331,9 +331,9 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file,
   if (uf.b == 4294967295)
     buf[0] = source_file->float_minvals;
 
+  // normalize input samples between specified range (usually -0.5 and 0.5)
   irreversible_normalize(buf, stripe_elements*height, source_file->is_signed, 
       source_file->float_minvals, source_file->float_maxvals, false);
-
 
   // increment the position in FITS file
   frame_fheight[component] += height;
