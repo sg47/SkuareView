@@ -728,6 +728,7 @@ int main(int argc, char *argv[])
     string = args.advance(codestream.access_siz()->parse_string(string));
   if (args.show_unrecognized(pretty_cout) != 0)
     { kdu_error e; e << "There were unrecognized command line arguments!"; }
+  codestream.change_appearance(false,true,false);
   codestream.access_siz()->finalize_all();
 
   // Write the JP2 header, if necessary

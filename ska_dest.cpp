@@ -25,7 +25,7 @@ ska_dest_file::write_header(jp2_family_src &src, kdu_args &args)
     }
   }
   if (out == NULL)
-  { kdu_error e; e << "Image file, \"" << fname << ", does not have a "
+  { kdu_error e; e << "Imege file, \"" << fname << ", does not have a "
     "recognized suffix.  Valid suffices are currently: h5. Upper or lower "
       "case may be used, but must be used consistently."; }
 }

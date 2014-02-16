@@ -1,0 +1,48 @@
+<HTML>
+<HEAD>
+<TITLE> Kakadu Hyper-Doc (kdu_client::target_started) </TITLE>
+<STYLE TYPE="text/css">
+<!--
+.indented-text { padding-left: 20pt; }
+.function-text { padding-left: 80pt;
+                 text-indent: -60pt; }
+-->
+</STYLE>
+</HEAD>
+<BODY TEXT="#000000" LINK="#0000ff" BGCOLOR="#B4DCB4">
+<P ALIGN="RIGHT">|<A HREF="#SynopsiS"> synopsis </A>||<A HREF="kdu_client__is_active.html"> prev </A>||<A HREF="kdu_client__is_alive.html"> next </A>|</P>
+<H1><A NAME="ToP">kdu_client::target_started</A></H1>
+<DIR><DIR><H3><EM><U>Java:</U> Kdu_client.Target_started</EM></H3></DIR></DIR>
+<P CLASS="function-text"><B>bool</B> target_started(
+)</P>
+<DIR><DIR><P CLASS="function-text"><EM><U>Java:</U> public native boolean Target_started(
+)</EM></P></DIR></DIR>
+<P>[Declared in <A HREF="++++apps+c$o+kdu_client+h.html">"../apps/compressed_io/kdu_client.h"</A>]</P><P><A HREF="kdu_client.html">Go to class description.</A></P>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="SynopsiS">Synopsis</A></H2>
+<DIV CLASS="indented-text">
+<P>
+Returns true if the server has replied to the client's
+first request, indicating that the requested target
+(as returned by 
+<A HREF="kdu_client__get$get_name.html">get_target_name</A>) is actually available. One important reason for calling
+this function is to wait until you can be sure that
+any local cache file associated with the target has
+been opened internally, so that attempts to open imagery
+will be able to use the contents of any content cached
+from previous browsing sessions.
+</P><P>
+ To this end, you are guaranteed that this function
+will not return true until the relevant reply has been
+processed, including associated activities such as
+searching for and opening a local cache file. Moreover,
+you are also guaranteed that a notification will be
+posted to any installed 
+<A HREF="kdu$ifier.html">kdu_client_notifier</A> object immediately after the point at which this function
+will report true.
+</P>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><P ALIGN="RIGHT">|<A HREF="#ToP"> top </A>||<A HREF="#SynopsiS"> synopsis </A>||<A HREF="kdu_client__is_active.html"> prev </A>||<A HREF="kdu_client__is_alive.html"> next </A>|</P>
+</BODY>
+</HTML>

@@ -663,7 +663,7 @@ int main(int argc, char *argv[])
   // have the same width and height as all the frames.
   ofile->crop.depth=num_components;
   ofile->crop.z=skip_components;
-  bool flip_vertically = false;
+  bool flip_vertically = true;
 
   if (num_components == 0)
     { kdu_error e; e << "Input image has no components!"; }

@@ -1,0 +1,27 @@
+KDU_GLIBS =
+# KDU_GLIBS += -static -static-libgcc # Uncomment this to get a static build
+
+CC = g++
+
+INCLUDES = -I../../coresys/common -I../args -I../image -I../compressed_io -I../support -I../client_server
+C_OPT = -O2 -DNDEBUG -Wall -Wno-uninitialized -Wno-deprecated $(KDU_GLIBS)
+C_OPT += -m64
+C_OPT += -mssse3 -DKDU_X86_INTRINSICS # Various other speedup options available
+DEFINES = -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 # Remove for 32-bit I/O
+#DEFINES += -DKDU_CUSTOM_TEXT   # See "Internationalization" in "Compilation_Instructions.txt"
+
+CFLAGS = $(INCLUDES) $(C_OPT) $(DEFINES)
+LIBS = -lm -lpthread # You may comment out "-lpthreads" if coresys was
+                     # built using -DKDU_NO_THREADS
+NETLIBS =
+
+BIN_DIR = ../../bin/Linux-x86-64-gcc
+LIB_DIR = ../../lib/Linux-x86-64-gcc
+
+STATIC_LIB_SRC = libkdu.a
+SHARED_LIB_SRC = libkdu_v72R.so
+
+LIB_SRC = $(SHARED_LIB_SRC) # Change to $(STATIC_LIB_SRC) for static linking
+LIB_IMPORTS = 
+
+include Targets.mk

@@ -1,0 +1,77 @@
+<HTML>
+<HEAD>
+<TITLE> Kakadu Hyper-Doc (kdu_client::get_timed_request_horizon) </TITLE>
+<STYLE TYPE="text/css">
+<!--
+.indented-text { padding-left: 20pt; }
+.function-text { padding-left: 80pt;
+                 text-indent: -60pt; }
+-->
+</STYLE>
+</HEAD>
+<BODY TEXT="#000000" LINK="#0000ff" BGCOLOR="#B4DCB4">
+<P ALIGN="RIGHT">|<A HREF="#SynopsiS"> synopsis </A>||<A HREF="#ReturnS"> return value </A>||<A HREF="#ArgS"> arguments </A>||<A HREF="kdu_client__sync_timing.html"> prev </A>||<A HREF="kdu_client__tri$requests.html"> next </A>|</P>
+<H1><A NAME="ToP">kdu_client::get_timed_request_horizon</A></H1>
+<DIR><DIR><H3><EM><U>Java:</U> Kdu_client.Get_timed_request_horizon</EM></H3></DIR></DIR>
+<P CLASS="function-text"><B>kdu_long</B> get_timed_request_horizon(
+<B>int</B>&nbsp;queue_id,
+<B>bool</B>&nbsp;expect_preemptive)</P>
+<DIR><DIR><P CLASS="function-text"><EM><U>Java:</U> public native long Get_timed_request_horizon(
+int&nbsp;queue_id,
+boolean&nbsp;expect_preemptive)</EM></P></DIR></DIR>
+<P>[Declared in <A HREF="++++apps+c$o+kdu_client+h.html">"../apps/compressed_io/kdu_client.h"</A>]</P><P><A HREF="kdu_client.html">Go to class description.</A></P>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="SynopsiS">Synopsis</A></H2>
+<DIV CLASS="indented-text">
+<P>
+This function is used in conjunction with calls to
+<A HREF="kdu_client__post_window.html">post_window</A> that specify a non-zero 
+<B>service_usecs</B> argument. It helps the application to avoid posting
+more window of interest requests than are necessary
+to keep the request queue primed.
+</P><P>
+ Typically, the application would call this function
+each time it receives notification of the arrival of
+new data in the client's cache via its 
+<A HREF="kdu$ifier.html">kdu_client_notifier</A> object, to determine whether or not additional window
+of interest requests should be posted using 
+<A HREF="kdu_client__post_window.html">post_window</A>.
+</P>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="ReturnS">Return Value</A></H2><DIV CLASS="indented-text">
+<P>
+Returns a threshold on the cumulative number of microseconds
+associated with 
+<B>service_usecs</B> values passed to new requests (not yet posted) beyond
+which there is no need for additional requests to be
+posted at the current time to keep the request queue
+primed.
+</P><P>
+ The return value may be 0 or even negative, in which
+case there is no need for any new requests to be posted
+at the current time.
+</P><P>
+ In the event that the identified request queue does
+not exist, or is not alive, the function is guaranteed
+to return a -ve value.
+</P>
+</DIV>
+<H2><A NAME="ArgS">Arguments</A></H2><DIV CLASS="indented-text">
+<H4><A NAME="queue_id">queue_id</A> [<B>int</B>]</H4><DIV CLASS="indented-text">
+</DIV>
+<H4><A NAME="expect_preemptive">expect_preemptive</A> [<B>bool</B>]</H4><DIV CLASS="indented-text">
+<P>
+If true, the caller is expecting its next call to 
+<A HREF="kdu_client__post_window.html">post_window</A> to be pre-emptive &mdash; i.e., the first call in
+a sequence of timed requests. This makes a difference,
+because a pre-emptive call will cancel any outstanding
+requests that may already be in the pipeline, which
+may increase the estimated request horizon.
+</P>
+</DIV>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><P ALIGN="RIGHT">|<A HREF="#ToP"> top </A>||<A HREF="#SynopsiS"> synopsis </A>||<A HREF="#ReturnS"> return value </A>||<A HREF="#ArgS"> arguments </A>||<A HREF="kdu_client__sync_timing.html"> prev </A>||<A HREF="kdu_client__tri$requests.html"> next </A>|</P>
+</BODY>
+</HTML>
