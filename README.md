@@ -78,7 +78,7 @@ find_minmax.c
 
 Compilation instructions are specified within the makefile.
 
-This is currently a very brief instruction on what modificaitons need to be
+This is currently a very brief instruction on what modificaitons WERE 
 made to the Kakadu Library and Kakadu Apps in order for SkuareView-NGAS-plugin
 to compile. They assume an understanding of the software.
 ==============================================================================
