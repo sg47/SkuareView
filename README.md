@@ -1,4 +1,4 @@
-Author: Sean Peters
+Authors: Slava Kitaeff, Sean Peters
 Contact: sean.peters.au@gmail.com
 Feel free to contact me for any questions.
 
@@ -27,7 +27,7 @@ makefile
     Compiles skuareview-encode and skuareview-decode, which are just extended
     versions of kdu_compress and kdu_expand.
 find_minmax.c
-    A seperate tool used within the Skuareview-NGAS-plugin, to find the min/max
+    A seperate tool used within the Skuareview, to find the min/max
     floating points values within a 3D HDF5 cube.
 
 
