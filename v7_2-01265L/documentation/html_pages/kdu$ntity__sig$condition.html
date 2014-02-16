@@ -1,0 +1,65 @@
+<HTML>
+<HEAD>
+<TITLE> Kakadu Hyper-Doc (kdu_thread_entity::signal_condition) </TITLE>
+<STYLE TYPE="text/css">
+<!--
+.indented-text { padding-left: 20pt; }
+.function-text { padding-left: 80pt;
+                 text-indent: -60pt; }
+-->
+</STYLE>
+</HEAD>
+<BODY TEXT="#000000" LINK="#0000ff" BGCOLOR="#B4DCB4">
+<P ALIGN="RIGHT">|<A HREF="#SynopsiS"> synopsis </A>||<A HREF="#ArgS"> arguments </A>||<A HREF="kdu$ntity__wai$condition.html"> prev </A>||<A HREF="kdu$ntity__join.html"> next </A>|</P>
+<H1><A NAME="ToP">kdu_thread_entity::signal_condition</A></H1>
+<DIR><DIR><H3><EM><U>Java:</U> Kdu_thread_entity.Signal_condition</EM></H3></DIR></DIR>
+<P CLASS="function-text"><B>void</B> signal_condition(
+<A HREF ="kdu$ition.html">kdu_thread_entity_condition</A>&nbsp;*&nbsp;cond)</P>
+<DIR><DIR><P CLASS="function-text"><EM><U>Java:</U> public native void Signal_condition(
+Kdu_thread_entity_condition&nbsp;cond)</EM></P></DIR></DIR>
+<P>[Declared in <A HREF="++++coresy$+kdu_threads+h.html">"../coresys/common/kdu_threads.h"</A>]</P><P><A HREF="kdu$ntity.html">Go to class description.</A></P>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="SynopsiS">Synopsis</A></H2>
+<DIV CLASS="indented-text">
+<P>
+This function may be invoked from any thread in order
+to signal the fact that a condition has occurred. The
+purpose of this is to all the thread associated with
+that condition to return from a call to 
+<A HREF="kdu$ntity__wai$condition.html">wait_for_condition</A>; if the condition is signalled before the thread waits,
+it will return immediately from the 
+<A HREF="kdu$ntity__wai$condition.html">wait_for_condition</A> call.
+</P><P>
+ The 
+<A HREF="kdu$ntity__sig$condition.html#cond">cond</A> pointer itself must have previously been obtained
+by the 
+<A HREF="kdu$ntity__get$condition.html">get_condition</A> function; moreover, that function must be invoked
+from within the same thread of execution that is to
+be signalled by this function.
+</P><P>
+ As a courtesy, to cover cases in which non-NULL condition
+references are written and then re-NULL'ed right before
+an application invokes this function, the function
+does absolutely nothing if 
+<A HREF="kdu$ntity__sig$condition.html#cond">cond</A> happens to be NULL on entry.
+</P><P>
+ This function should never throw an exception, even
+if other threads in the system have failed, invoking
+<A HREF="kdu$ntity__han$exception.html">handle_exception</A>. The call is designed to be fast and efficient.
+</P><P>
+ It is actually safe to invoke this function from any
+thread, even if it does not belong to the same thread
+group as the current object &mdash; this may happen
+if the function is called indirectly from within 
+<A HREF="kdu$2queue__for$e_detach.html">kdu_thread_queue::force_detach</A>.
+</P>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="ArgS">Arguments</A></H2><DIV CLASS="indented-text">
+<H4><A NAME="cond">cond</A> [<A HREF ="kdu$ition.html">kdu_thread_entity_condition</A>&nbsp;*]</H4><DIV CLASS="indented-text">
+</DIV>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><P ALIGN="RIGHT">|<A HREF="#ToP"> top </A>||<A HREF="#SynopsiS"> synopsis </A>||<A HREF="#ArgS"> arguments </A>||<A HREF="kdu$ntity__wai$condition.html"> prev </A>||<A HREF="kdu$ntity__join.html"> next </A>|</P>
+</BODY>
+</HTML>

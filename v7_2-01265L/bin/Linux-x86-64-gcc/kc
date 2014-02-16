@@ -1,0 +1,119 @@
+Usage:
+  "./kdu_compress ...
+   -i <file 1>[*<copies>@<size>],...  {see also `-fprec' & `-icrop'}
+   -o <compressed file -- raw code-stream, JP2 or JPX file>
+   -fprec <comp-0 precision>[L|M][,<comp-1 precision>[L|M][...]]
+   -icrop {<off_y>,<off_x>,<height>,<width>},...
+   -frag <tidx_y>,<tidx_x>,<thigh>,<twide>
+   -roi {<top>,<left>},{<height>,<width>} | <PGM image>,<threshold>
+   -rate -|<bits/pel>,<bits/pel>,...
+   -slope <layer slope>,<layer slope>,...
+   -full -- forces encoding and storing of all bit-planes.
+   -periodic_trimming yes|no -- override default policy
+   -precise -- forces the use of 32-bit representations.
+   -tolerance <percent tolerance on layer sizes given using `-rate'>
+   -flush_period <incremental flush period, measured in image lines>
+   -no_info -- prevents the inclusion of layer info in COM segments.
+   -com <comment string>
+   -no_weights -- target MSE minimization for colour images.
+   -no_palette
+   -jp2_space <sLUM|sRGB|sYCC|iccLUM|iccRGB>[,<parameters>]
+   -jpx_space <enumerated colour space>,[<prec>,<approx>]
+   -jp2_aspect <aspect ratio of high-res canvas grid>
+   -jp2_alpha -- treat 2'nd or 4'th image component as alpha
+   -jpx_layers [*|<num layers>]
+   -jp2_box <file 1>[,<file 2>[,...]]
+   -rotate <degrees>
+   Sprofile={ENUM<PROFILE0,PROFILE1,PROFILE2,PART2,CINEMA2K,CINEMA4K,BROADCAST>
+   }
+   Sextensions={FLAGS<DC|VARQ|TCQ|PRECQ|VIS|SSO|DECOMP|ANY_KNL|SYM_KNL|MCT|CURV
+   E|ROI>}
+   Sbroadcast={<int>,ENUM<single,multi>,ENUM<irrev,rev>}
+   Scap={<yes/no>}
+   SCpart2_caps={FLAGS<EXTENDED_COD>}
+   Ssize={<int>,<int>}
+   Sorigin={<int>,<int>}
+   Stiles={<int>,<int>}
+   Stile_origin={<int>,<int>}
+   Scomponents={<int>}
+   Ssigned={<yes/no>},...
+   Sprecision={<int>},...
+   Ssampling={<int>,<int>},...
+   Sdims={<int>,<int>},...
+   Mcomponents={<int>}
+   Msigned={<yes/no>},...
+   Mprecision={<int>},...
+   Cycc[:<T>]={<yes/no>}
+   Cmct[:<T>]={FLAGS<ARRAY|DWT>}
+   Clayers[:<T>]={<int>}
+   Cuse_sop[:<T>]={<yes/no>}
+   Cuse_eph[:<T>]={<yes/no>}
+   Corder[:<T>]={ENUM<LRCP,RLCP,RPCL,PCRL,CPRL>}
+   Calign_blk_last[:<T>]={<yes/no>,<yes/no>}
+   Clevels[:<TC>]={<int>}
+   Cads[:<TC>]={<int>}
+   Cdfs[:<TC>]={<int>}
+   Cdecomp[:<TC>]={<custom int>},...
+   Creversible[:<TC>]={<yes/no>}
+   Ckernels[:<TC>]={ENUM<W9X7,W5X3,ATK>}
+   Catk[:<TC>]={<int>}
+   Cuse_precincts[:<TC>]={<yes/no>}
+   Cprecincts[:<TC>]={<int>,<int>},...
+   Cblk[:<TC>]={<int>,<int>}
+   Cmodes[:<TC>]={FLAGS<BYPASS|RESET|RESTART|CAUSAL|ERTERM|SEGMARK|BYPASS_E1|BY
+   PASS_E2>}
+   Cweight[:<TC>]={<float>}
+   Clev_weights[:<TC>]={<float>},...
+   Cband_weights[:<TC>]={<float>},...
+   Creslengths[:<TC>]={<int>},...
+   Cagglengths[:<TC>]={<int>},...
+   Qguard[:<TC>]={<int>}
+   Qderived[:<TC>]={<yes/no>}
+   Qstep[:<TC>]={<float>}
+   Qabs_steps[:<TC>]={<float>},...
+   Qabs_ranges[:<TC>]={<int>},...
+   Rshift[:<TC>]={<int>}
+   Rlevels[:<TC>]={<int>}
+   Rweight[:<TC>]={<float>}
+   Porder[:<T>]={<int>,<int>,<int>,<int>,<int>,ENUM<LRCP,RLCP,RPCL,PCRL,CPRL>},
+   ...
+   CRGoffset={<float>,<float>},...
+   ORGtparts[:<T>]={FLAGS<R|L|C>}
+   ORGgen_plt[:<T>]={<yes/no>}
+   ORGplt_parts[:<T>]={FLAGS<R|L|C>}
+   ORGgen_tlm[:<T>]={<int>}
+   ORGtlm_style[:<T>]={ENUM<implied,byte,short>,ENUM<short,long>}
+   Mmatrix_size[:<TI>]={<int>}
+   Mmatrix_coeffs[:<TI>]={<float>},...
+   Mvector_size[:<TI>]={<int>}
+   Mvector_coeffs[:<TI>]={<float>},...
+   Mtriang_size[:<TI>]={<int>}
+   Mtriang_coeffs[:<TI>]={<float>},...
+   Mstage_inputs[:<TI>]={<int>,<int>},...
+   Mstage_outputs[:<TI>]={<int>,<int>},...
+   Mstage_collections[:<TI>]={<int>,<int>},...
+   Mstage_xforms[:<TI>]={ENUM<DEP,MATRIX,DWT,MAT>,<int>,<int>,<int>,<int>},...
+   Mnum_stages[:<T>]={<int>}
+   Mstages[:<T>]={<int>},...
+   Kreversible[:<TI>]={<yes/no>}
+   Ksymmetric[:<TI>]={<yes/no>}
+   Kextension[:<TI>]={ENUM<CON,SYM>}
+   Ksteps[:<TI>]={<int>,<int>,<int>,<int>},...
+   Kcoeffs[:<TI>]={<float>},...
+   DSdfs[:<I>]={ENUM<X,H,V,B>},...
+   Ddecomp[:<TI>]={<custom int>},...
+   DOads[:<TI>]={<int>},...
+   DSads[:<TI>]={ENUM<X,H,V,B>},...
+   -num_threads <#default threads>[,<#domain threads>[T|C]...]
+   -double_buffering <stripe height>
+   -progress <interval>
+   -cpu <coder-iterations>
+   -mem -- Report memory usage.
+   -s <switch file>
+   -record <file>
+   -quiet -- suppress informative messages.
+   -version -- print core system version I was compiled against.
+   -v -- abbreviation of `-version'
+   -usage -- print a comprehensive usage statement.
+   -u -- print a brief usage statement."
+   

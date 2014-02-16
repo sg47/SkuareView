@@ -18,7 +18,7 @@ D_OBJS=image_out.o hdf5_out.o palette.o
 OBJS=$(E_OBJS) $(D_OBJS)
 
 # Directory absolute paths
-APPS=/home/speters/kakadu-v7/v7_2-01265L/apps
+APPS=v7_2-01265L/apps
 COMPRESS=$(APPS)/kdu_compress
 EXPAND=$(APPS)/kdu_expand
 IMAGE=$(APPS)/image
