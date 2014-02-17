@@ -98,13 +98,12 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
 }
 
 /*****************************************************************************/
-/* Determine min and max - this code is very messy and not guaranteed to work*/
+/* Determine min and max - TODO clean up this code                           */
 /*****************************************************************************/
 void fits_in::determine_min_and_max(ska_source_file* const source_file, int component) {
     int height = 1;
     float min = FLT_MAX;
     float max = FLT_MIN;
-    int fheight = 0;
     int num_unread_rows = source_file->crop.height * source_file->crop.depth;
     
     std::cout << "Starting search for min and max values..." << std::endl;
@@ -112,15 +111,13 @@ void fits_in::determine_min_and_max(ska_source_file* const source_file, int comp
     int anynul = 0;
     unsigned char nulval = 0;
     LONGLONG stripe_elements = source_file->crop.width;
-    LONGLONG *fpixel_copy = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);
-    
+    LONGLONG *fpixel_copy = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);   
     
     fpixel_copy[0] = source_file->crop.x + 1; // read from the begining of line
-    fpixel_copy[1] = fheight+1;
-    fpixel_copy[2] = component+1;
+    fpixel_copy[1] = 1; // read from first row
+    fpixel_copy[2] = component+1; // select plane
     
     while(num_unread_rows > 0) {      
-        //std::cout << "read line..." << std::endl;
         float *buf = new float[stripe_elements];
         double *double_buffer = new double[stripe_elements];
         switch (bitpix) {
@@ -139,10 +136,11 @@ void fits_in::determine_min_and_max(ska_source_file* const source_file, int comp
                 kdu_error e; e << "Unsupport FITS image type!";
         }
         
-        if (status != 0)
-        { kdu_error e; e << "FITS file terminated prematurely!"; }
+        if (status != 0) {
+            kdu_error e; e << "FITS file terminated prematurely!";
+            return;
+        }
         
-        //std::cout << "update variables..." << std::endl;
         fpixel_copy[1]++;
 
         // If not NaN, check min and max
@@ -152,7 +150,6 @@ void fits_in::determine_min_and_max(ska_source_file* const source_file, int comp
         // testing for this case...
         // TODO: show this horrible snippet of code to someone for better ideas
         
-        //std::cout << "check min max..." << std::endl;
         for(int i = 0; i < height * stripe_elements; i++) {
             union ufloat {
                 float f;
@@ -170,16 +167,18 @@ void fits_in::determine_min_and_max(ska_source_file* const source_file, int comp
             }
         }
         
-        //std::cout << "end iteration..." << std::endl << std::endl;
-            
-        // increment the position in FITS file
-        fheight += height;
+        // Increment the position in FITS file
         num_unread_rows -= height;
     }
     
+    // Update Min and max values
     std::cout << "min: " << min << ", max: " << max << std::endl;
-    source_file->float_minvals = min;
-    source_file->float_maxvals = max;
+    if(source_file->float_minvals > min) {
+        source_file->float_minvals = min;
+    }
+    if(source_file->float_maxvals < max) {
+        source_file->float_maxvals = max;
+    }
 }
 
 /* ========================================================================= */
@@ -341,10 +340,12 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
         sscanf(keyvalue, "%lf", &source_file->float_minvals);
       } else {
         has_min_max_in_header = false;
+        source_file->float_maxvals = FLT_MAX;
       }
       if (!strcmp(keyname, "DATAMAX")) {
         sscanf(keyvalue, "%lf", &source_file->float_maxvals);
       } else {
+          source_file->float_maxvals = FLT_MIN;
         has_min_max_in_header = false;
       }
     }
@@ -363,17 +364,17 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   source_file->metadata_length = buf_idx;
   source_file->metadata_buffer[buf_idx--] = '\0';
 
-  if(!has_min_max_in_header) {
-    determine_min_and_max(source_file, 0);
+  frame_fheight = new long [source_file->crop.depth];
+  for(int i = 0; i < source_file->crop.depth; ++i) {
+    frame_fheight[i] = 0;
+    if(!has_min_max_in_header) {
+        determine_min_and_max(source_file, i);
+    }
   }
     
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
   std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";
-
-  frame_fheight = new long [source_file->crop.depth];
-  for(int i = 0; i < source_file->crop.depth; ++i)
-    frame_fheight[i] = 0;
 }
 
 /*****************************************************************************/
