@@ -1,0 +1,29 @@
+KDU_GLIBS =
+# KDU_GLIBS += -static -static-libgcc # This option is for static builds, but
+         # might be problematic on the MAC; use xcode for exotic configurations
+
+CC = g++
+
+INCLUDES = -I../common
+C_OPT = -O3 -DNDEBUG -Wall
+C_OPT += -Wno-uninitialized   # GCC reports false uninitialized warnings
+C_OPT += $(KDU_GLIBS)
+C_OPT += -fPIC
+C_OPT += -DKDU_ALTIVEC_GCC -faltivec
+#C_OPT += -mtune=G4  # Use this for a G4 build
+C_OPT += -fast # Use this only for a G5 build
+#C_OPT += -DKDU_CUSTOM_TEXT   # See "Internationalization" in "Compilation_Instructions.txt"
+#C_OPT += -DKDU_NO_THREADS    # Comment out if you don't want multi-threading
+CFLAGS = $(INCLUDES) $(C_OPT)
+
+BIN_DIR = ../../bin/Mac-PPC-gcc
+LIB_DIR = ../../lib/Mac-PPC-gcc
+
+STATIC_LIB_NAME = libkdu.a
+SHARED_LIB_NAME = libkdu_v72R.so
+
+LIB_RESOURCES =
+
+all :: $(STATIC_LIB_NAME) $(SHARED_LIB_NAME)
+
+include Targets.mk

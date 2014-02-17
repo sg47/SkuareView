@@ -1,0 +1,28 @@
+KDU_GLIBS =
+# KDU_GLIBS += -static -static-libgcc # Uncomment this to get a static build
+
+CC = g++
+
+INCLUDES = -I../common
+C_OPT =  -O2 -DNDEBUG -Wall
+C_OPT += -Wno-uninitialized   # GCC reports false uninitialized warnings
+C_OPT += $(KDU_GLIBS)
+C_OPT += -mcpu=ultrasparc  # use -mcpu=ultrasparc3 for 64-bit compilation
+C_OPT += -fPIC
+C_OPT += -DKDU_SPARCVIS_GCC   # Comment out if you don't want VIS SIMD speedups
+#C_OPT += -DKDU_CUSTOM_TEXT   # See "Internationalization" in "Compilation_Instructions.txt"
+#C_OPT += -DKDU_NO_THREADS    # Uncomment to compile without multi-threading
+C_OPT += -DKDU_NO_SCHED_SUPPORT # See "Compilation_Instructions.txt"
+CFLAGS = $(INCLUDES) $(C_OPT)
+
+BIN_DIR = ../../bin/Solaris-gcc
+LIB_DIR = ../../lib/Solaris-gcc
+
+STATIC_LIB_NAME = libkdu.a
+SHARED_LIB_NAME = libkdu_v72R.so
+
+LIB_RESOURCES =
+
+all :: $(STATIC_LIB_NAME) $(SHARED_LIB_NAME)
+
+include Targets.mk

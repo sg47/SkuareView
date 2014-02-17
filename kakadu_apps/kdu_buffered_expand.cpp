@@ -1,0 +1,819 @@
+/******************************************************************************/
+// File: kdu_stripe_expand.cpp [scope = APPS/BUFFERED_EXPAND]
+// Version: Kakadu, V7.2
+// Author: David Taubman
+// Last Revised: 17 January, 2013
+/******************************************************************************/
+// Copyright 2001, David Taubman, The University of New South Wales (UNSW)
+// The copyright owner is Unisearch Ltd, Australia (commercial arm of UNSW)
+// Neither this copyright statement, nor the licensing details below
+// may be removed from this file or dissociated from its contents.
+/******************************************************************************/
+// Licensee: International Centre For Radio Astronomy Research, Uni of WA
+// License number: 01265
+// The licensee has been granted a UNIVERSITY LIBRARY license to the
+// contents of this source file.  A brief summary of this license appears
+// below.  This summary is not to be relied upon in preference to the full
+// text of the license agreement, accepted at purchase of the license.
+// 1. The License is for University libraries which already own a copy of
+//    the book, "JPEG2000: Image compression fundamentals, standards and
+//    practice," (Taubman and Marcellin) published by Kluwer Academic
+//    Publishers.
+// 2. The Licensee has the right to distribute copies of the Kakadu software
+//    to currently enrolled students and employed staff members of the
+//    University, subject to their agreement not to further distribute the
+//    software or make it available to unlicensed parties.
+// 3. Subject to Clause 2, the enrolled students and employed staff members
+//    of the University have the right to install and use the Kakadu software
+//    and to develop Applications for their own use, in their capacity as
+//    students or staff members of the University.  This right continues
+//    only for the duration of enrollment or employment of the students or
+//    staff members, as appropriate.
+// 4. The enrolled students and employed staff members of the University have the
+//    right to Deploy Applications built using the Kakadu software, provided
+//    that such Deployment does not result in any direct or indirect financial
+//    return to the students and staff members, the Licensee or any other
+//    Third Party which further supplies or otherwise uses such Applications.
+// 5. The Licensee, its students and staff members have the right to distribute
+//    Reusable Code (including source code and dynamically or statically linked
+//    libraries) to a Third Party, provided the Third Party possesses a license
+//    to use the Kakadu software, and provided such distribution does not
+//    result in any direct or indirect financial return to the Licensee,
+//    students or staff members.  This right continues only for the
+//    duration of enrollment or employment of the students or staff members,
+//    as appropriate.
+/*******************************************************************************
+Description:
+   A Kakadu demo application, demonstrating use of the powerful
+`kdu_stripe_decompressor' object.
+*******************************************************************************/
+
+#include <stdio.h>
+#include <iostream>
+#include <assert.h>
+// Kakadu core includes
+#include "kdu_arch.h"
+#include "kdu_elementary.h"
+#include "kdu_messaging.h"
+#include "kdu_params.h"
+#include "kdu_compressed.h"
+#include "kdu_sample_processing.h"
+#include "kdu_stripe_decompressor.h"
+// Application includes
+#include "kdu_args.h"
+#include "kdu_file_io.h"
+#include "jp2.h"
+// SKA includes
+#include "../ska_local.h"
+
+/* ========================================================================= */
+/*                         Set up messaging services                         */
+/* ========================================================================= */
+
+class kdu_stream_message : public kdu_thread_safe_message {
+  public: // Member classes
+    kdu_stream_message(std::ostream *stream)
+      { this->stream = stream; }
+    void put_text(const char *string)
+      { (*stream) << string; }
+    void flush(bool end_of_message=false)
+      { stream->flush();
+        kdu_thread_safe_message::flush(end_of_message); }
+  private: // Data
+    std::ostream *stream;
+  };
+
+static kdu_stream_message cout_message(&std::cout);
+static kdu_stream_message cerr_message(&std::cerr);
+static kdu_message_formatter pretty_cout(&cout_message);
+static kdu_message_formatter pretty_cerr(&cerr_message);
+
+/* ========================================================================= */
+/*                            Internal Functions                             */
+/* ========================================================================= */
+
+/*****************************************************************************/
+/* STATIC                        print_version                               */
+/*****************************************************************************/
+
+static void
+  print_version()
+{
+  kdu_message_formatter out(&cout_message);
+  out.start_message();
+  out << "This is Kakadu's \"kdu_buffered_expand\" demo application.\n";
+  out << "\tCompiled against the Kakadu core system, version "
+      << KDU_CORE_VERSION << "\n";
+  out << "\tCurrent core system version is "
+      << kdu_get_core_version() << "\n";
+  out.flush(true);
+  exit(0);
+}
+
+/*****************************************************************************/
+/* STATIC                        print_usage                                 */
+/*****************************************************************************/
+
+static void
+  print_usage(char *prog, bool comprehensive=false)
+{
+  kdu_message_formatter out(&cout_message);
+
+  out << "Usage:\n  \"" << prog << " ...\n";
+  out.set_master_indent(3);
+  out << "-i <compressed file>\n";
+  if (comprehensive)
+    out << "\tCurrently accepts raw code-stream files and code-streams "
+           "wrapped in any JP2 compatible file format.  The file signature "
+           "is used to check whether or not the file is a raw codestream, "
+           "rather than relying upon a file name suffix.\n";
+  out << "-o <PGM/raw file 1>[,<PGM/raw file 2>[,...]]\n";
+  if (comprehensive)
+    out << "\tIf you omit this argument, all image components will be fully "
+           "decompressed into memory stripe buffers internally, but only "
+           "the final file writing phase will be omitted.  This is very useful "
+           "if you want to evaluate the decompression speed (use the `-cpu') "
+           "without having the results confounded by file writing -- for large "
+           "images, disk I/O accounts for most of the processing time on "
+           "modern CPU's.\n"
+           "\t   The argument takes one or more output image files.  To "
+           "simplify this demo application, each file represents only one "
+           "image component, and must be either a PGM file, or a raw file.  As "
+           "in the \"kdu_expand\" application, the sample bits in a raw file "
+           "are written to the least significant bit positions of an 8 or 16 "
+           "bit word, depending on the bit-depth.  For signed data, the word "
+           "is sign extended.  The default word organization is big-endian, "
+           "regardless of your machine architecture, but this application "
+           "allows you to explicitly nominate a different byte order, "
+           "via the `-little_endian' argument.\n";
+  out << "-rate <bits per pixel>\n";
+  if (comprehensive)
+    out << "\tMaximum bit-rate, expressed in terms of the ratio between the "
+           "total number of compressed bits (including headers) and the "
+           "product of the largest horizontal and  vertical image component "
+           "dimensions. Note that we use the original dimensions of the "
+           "compressed image, regardless or resolution scaling and regions "
+           "of interest.  Note CAREFULLY that the file is simply truncated "
+           "to the indicated limit, so that the effect of the limit will "
+           "depend strongly upon the packet sequencing order used by the "
+           "code-stream.  The effect of the byte limit may be modified by "
+           "supplying the `-simulate_parsing' flag, described below.\n";
+  out << "-simulate_parsing\n";
+  if (comprehensive)
+    out << "\tIf this flag is supplied, discarded resolutions, image "
+           "components or quality layers (see `-reduce' and `-layers') will "
+           "not be counted when applying any rate limit supplied via "
+           "`-rate' and when reporting overall bit-rates.  The effect is "
+           "intended to be the same as if the code-stream were first "
+           "parsed to remove the resolutions, components or quality layers "
+           "which are not being used.\n";
+  out << "-skip_components <num initial image components to skip>\n";
+  if (comprehensive)
+    out << "\tSkips over one or more initial image components, reconstructing "
+           "as many remaining image components as can be stored in the "
+           "output image file(s) specified with \"-o\" (or all remaining "
+           "components, if no \"-o\" argument is supplied).\n";
+  out << "-layers <max layers to decode>\n";
+  if (comprehensive)
+    out << "\tSet an upper bound on the number of quality layers to actually "
+           "decode.\n";
+  out << "-reduce <discard levels>\n";
+  if (comprehensive)
+    out << "\tSet the number of highest resolution levels to be discarded.  "
+           "The image resolution is effectively divided by 2 to the power of "
+           "the number of discarded levels.\n";
+  out << "-int_region {<top>,<left>},{<height>,<width>}\n";
+  if (comprehensive)
+    out << "\tEstablish a region of interest within the original compressed "
+           "image.  Only the region of interest will be decompressed and the "
+           "output image dimensions will be modified accordingly.  The "
+           "coordinates of the top-left corner of the region are given first, "
+           "separated by a comma and enclosed in curly braces, after which "
+           "the dimensions of the region are given in similar fashion.  The "
+           "two coordinate pairs must be separated by a comma, with no "
+           "intervening spaces.  All coordinates and dimensions are expressed "
+           "as integer numbers of pixels for the first image component to "
+           "be decompressed, taking into account any resolution adjustments "
+           "associated with the `-reduce' argument.  The location of the "
+           "region is expressed relative to the upper left hand corner of the "
+           "relevant image component, at the relevant resolution.  If any "
+           "part of the specified region does not intersect with the image, "
+           "the decompressed region will be reduced accordingly.  Note that "
+           "the `-region' argument offered by the \"kdu_expand\" application "
+           "is similar, except that it accepts normalized region coordinates, "
+           "in the range 0 to 1.\n";
+  out << "-min_height <preferred minimum stripe height>\n";
+  if (comprehensive)
+    out << "\tAllows you to control the processing stripe height which is "
+           "preferred in the event that the image is not tiled.  If the image "
+           "is tiled, the preferred stripe height is the height of a tile, so "
+           "that partially processed tiles need not be buffered.  Otherwise, "
+           "the stripes used for incremental processing of the image data "
+           "may be as small as 1 line, but it is usually preferable to use "
+           "a larger value, as specified here, so as to avoid switching back "
+           "and forth between file reading and compression too frequently.  "
+           "The default value, for this parameter is 8.  Play around with it "
+           "if you want to get the best processing performance.\n";
+  out << "-max_height <maximum stripe height>\n";
+  if (comprehensive)
+    out << "Regardless of the desire to process in stripes whose height is "
+           "equal to the tile height, wherever the image is horizontally "
+           "tiled, this argument provides an upper bound on the maximum "
+           "stripe height.  If the tile height exceeds this value, "
+           "an entire row of tiles will be kept open for processing.  This "
+           "avoids excessive memory consumption.  This argument allows you "
+           "to control the trade-off between stripe buffering and "
+           "tile decompression engine memory.  The default limit is 1024.\n";
+  out << "-s <switch file>\n";
+  if (comprehensive)
+    out << "\tSwitch to reading arguments from a file.  In the file, argument "
+           "strings are separated by whitespace characters, including spaces, "
+           "tabs and new-line characters.  Comments may be included by "
+           "introducing a `#' or a `%' character, either of which causes "
+           "the remainder of the line to be discarded.  Any number of "
+           "\"-s\" argument switch commands may be included on the command "
+           "line.\n";
+  out << "-little_endian -- use little-endian byte order with raw files\n";
+  out << "-num_threads <0, or number of parallel threads to use>\n";
+  if (comprehensive)
+    out << "\tUse this argument to gain explicit control over "
+           "multi-threaded or single-threaded processing configurations.  "
+           "The special value of 0 may be used to specify that you want "
+           "to use the conventional single-threaded processing "
+           "machinery -- i.e., you don't want to create or use a "
+           "threading environment.  Otherwise, you must supply a "
+           "positive integer here, and the object will attempt to create "
+           "a threading environment with that number of concurrent "
+           "processing threads.  The actual number of created threads "
+           "may be smaller than the number requested, if your "
+           "request exceeds internal resource limits.  It is worth "
+           "noting that \"-num_threads 1\" and \"-num_threads 0\" "
+           "both result in single-threaded processing, although the "
+           "former creates an explicit threading environment and uses "
+           "it to schedule the processing steps, even if there is only "
+           "one actual thread of execution.\n"
+           "\t   If the `-num_threads' argument is not supplied explicitly, "
+           "the default behaviour is to create a threading environment only "
+           "if the system offers multiple CPU's (or virtual CPU's), with "
+           "one thread per CPU.  However, this default behaviour depends "
+           "upon knowledge of the number of CPU's which are available -- "
+           "something which cannot always be accurately determined through "
+           "system calls.  The default value might also not yield the "
+           "best possible throughput.\n";
+  out << "-double_buffering <num double buffered rows>\n";
+  if (comprehensive)
+    out << "\tThis option may be used only in conjunction with a non-zero "
+           "`-num_threads' value.  From Kakadu version 7, double buffering "
+           "is activated by default in multi-threaded processing "
+           "environments, but you can disable it by supplying 0 "
+           "to this argument.\n"
+           "\t   Without double buffering, DWT operations will all be "
+           "performed by the single thread which \"owns\" the multi-threaded "
+           "processing group.  For a small number of processors, this may be "
+           "acceptable, or even optimal, since the DWT is generally quite a "
+           "bit less CPU intensive than block decoding (which is always "
+           "spread across multiple threads, if available) and synchronous "
+           "single threaded DWT operations can improve memory access "
+           "locality.  However, even for a small number of threads, the "
+           "amount of thread idle time can be reduced by specifying the "
+           "`-double_buffering' option.  In this case, a certain number "
+           "of image rows in each image component are actually double "
+           "buffered, so that one set can be processed by colour "
+           "transformation and sample writing operations, while the other "
+           "set is generated by the DWT synthesis engines, which themselves "
+           "feed off the block decoding engines.  The number of rows in "
+           "each component which are to be double buffered is known as the "
+           "\"stripe height\", supplied as a parameter to this argument.  The "
+           "stripe height can be as small as 1, but this may add quite a bit "
+           "of thread context switching overhead.  For this reason, a stripe "
+           "height in the range 8 to 64 is recommended, while 32 is selected "
+           "by default in multi-threaded environments.  If you are working "
+           "with small horizontal tiles, you may find that an even larger "
+           "stripe height is required for maximum throughput.  In the "
+           "extreme case of very small tile widths and/or a small number of "
+           "threads, you may find that the `-double_buffering' option hurts "
+           "throughput.  In any case, the message is that for maximum "
+           "throughput on a multi-processor platform, you should be prepared "
+           "to play with both the `-num_threads' and `-double_buffering' "
+           "options.\n";
+  out << "-cpu -- report processing CPU time\n";
+  if (comprehensive)
+    out << "\tFor results which more closely reflect the actual decompression "
+           "processing time, do not specify any output files via the `-o' "
+           "option.  The image is still fully decompressed into memory "
+           "buffers, but the final phase of writing the contents of these "
+           "buffers to disk files is skipped.  This can have a huge impact "
+           "on timing, depending on your platform, and many applications "
+           "do not need to write the results to disk.\n";
+  out << "-version -- print core system version I was compiled against.\n";
+  out << "-v -- abbreviation of `-version'\n";
+  out << "-usage -- print a comprehensive usage statement.\n";
+  out << "-u -- print a brief usage statement.\"\n\n";
+
+  out.flush();
+  exit(0);
+}
+
+/*****************************************************************************/
+/* STATIC                     parse_simple_args                              */
+/*****************************************************************************/
+
+static ska_dest_file*
+  parse_simple_args(kdu_args &args, char* &ifname, float &max_bpp,
+                    bool &simulate_parsing, int &skip_components,
+                    int &max_layers, int &discard_levels,
+                    kdu_dims &region, int &preferred_min_stripe_height,
+                    int &absolute_max_stripe_height, bool &force_precise,
+                    bool &want_fastest, int &num_threads,
+                    int &double_buffering_height, bool &cpu)
+  /* Parses all command line arguments whose names include a dash.  Returns
+     a list of open output files.
+        Note that `num_threads' is set to 0 if no multi-threaded processing
+     group is to be created, as distinct from a value of 1, which means
+     that a multi-threaded processing group is to be used, but this group
+     will involve only one thread. */
+{
+  if ((args.get_first() == NULL) || (args.find("-u") != NULL))
+    print_usage(args.get_prog_name());
+  if (args.find("-usage") != NULL)
+    print_usage(args.get_prog_name(),true);
+  if ((args.find("-version") != NULL) || (args.find("-v") != NULL))
+    print_version();      
+
+  ifname = NULL;
+  max_bpp = -1.0F;
+  simulate_parsing = false;
+  skip_components = 0;
+  max_layers = 0;
+  discard_levels = 0;
+  region.size = region.pos = kdu_coords(0,0);
+  preferred_min_stripe_height = 8;
+  absolute_max_stripe_height = 1024;
+  force_precise = want_fastest = false;
+  num_threads = 0; // This is not actually the default -- see below.
+  double_buffering_height = 0; // i.e., no double buffering
+  cpu = false;
+  ska_dest_file *ofile;
+
+  if (args.find("-i") != NULL)
+    {
+      const char *string = args.advance();
+      if (string == NULL)
+        { kdu_error e; e << "\"-i\" argument requires a file name!"; }
+      ifname = new char[strlen(string)+1];
+      strcpy(ifname,string);
+      ifname[strlen(string)] = '\0';
+      args.advance();
+    }
+  else
+    { kdu_error e; e << "You must supply an input file name."; }
+
+  if (args.find("-o") != NULL)
+    {
+      const char *string = args.advance();
+      if (string == NULL)
+        { kdu_error e; e << "\"-o\" argument requires a parameter string."; }
+      ofile = new ska_dest_file;
+      ofile->fname = new char[strlen(string)+1];
+      strcpy(ofile->fname,string);
+      args.advance();
+    }
+
+  if (args.find("-int_region")) 
+    {
+      const char *field_sep, *string = args.advance();
+      if ((sscanf(string,"{%d,%d},{%d,%d}", &(ofile->crop.x), &(ofile->crop.y), 
+              &(ofile->crop.width), &(ofile->crop.height)) != 4) ||
+              ofile->crop.x < 0 || ofile->crop.y < 0 || 
+              ofile->crop.width <= 0 || ofile->crop.height <= 0)
+      { kdu_error e; e << "i don't even care."; }
+      region.size = kdu_coords(ofile->crop.width, ofile->crop.height);
+      region.pos = kdu_coords(ofile->crop.x, ofile->crop.y);
+      ofile->crop.x = 0;
+      ofile->crop.y = 0;
+      args.advance();
+    }
+  else 
+  {
+    ofile->crop.width = -1;
+  }
+
+  if (args.find("-rate") != NULL)
+    {
+      const char *string = args.advance();
+      if ((string == NULL) || (sscanf(string,"%f",&max_bpp) != 1) ||
+          (max_bpp <= 0.0F))
+        { kdu_error e; e << "\"-rate\" argument requires a positive "
+          "real-valued parameter."; }
+      args.advance();
+    }
+  if (args.find("-simulate_parsing") != NULL)
+    {
+      simulate_parsing = true;
+      args.advance();
+    }
+  if (args.find("-skip_components") != NULL)
+    {
+      const char *string = args.advance();
+      if ((string == NULL) || (sscanf(string,"%d",&skip_components) != 1) ||
+          (skip_components < 0))
+        { kdu_error e; e << "\"-skip_components\" argument requires a "
+          "non-negative integer parameter!"; }
+      args.advance();
+    }
+  if (args.find("-layers") != NULL)
+    {
+      const char *string = args.advance();
+      if ((string == NULL) || (sscanf(string,"%d",&max_layers) != 1) ||
+          (max_layers < 1))
+        { kdu_error e; e << "\"-layers\" argument requires a positive "
+          "integer parameter!"; }
+      args.advance();
+    }
+  if (args.find("-reduce") != NULL)
+    {
+      const char *string = args.advance();
+      if ((string == NULL) || (sscanf(string,"%d",&discard_levels) != 1) ||
+          (discard_levels < 0))
+        { kdu_error e; e << "\"-reduce\" argument requires a non-negative "
+          "integer parameter!"; }
+      args.advance();
+    }
+
+  if (args.find("-num_threads") != NULL)
+    {
+      char *string = args.advance();
+      if ((string == NULL) || (sscanf(string,"%d",&num_threads) != 1) ||
+          (num_threads < 0))
+        { kdu_error e; e << "\"-num_threads\" argument requires a "
+          "non-negative integer."; }
+      args.advance();
+    }
+  else if ((num_threads = kdu_get_num_processors()) < 2)
+    num_threads = 0;
+
+  if (args.find("-double_buffering") != NULL)
+    {
+      if (num_threads == 0)
+        { kdu_error e; e << "\"-double_buffering\" may only be used with "
+          "a non-zero `-num_threads' value."; }
+      char *string = args.advance();
+      if ((string == NULL) ||
+          (sscanf(string,"%d",&double_buffering_height) != 1) ||
+          (double_buffering_height < 0))
+        { kdu_error e; e << "\"-double_buffering\" argument requires a "
+          "positive integer, specifying the number of rows from each "
+          "component which are to be double buffered, or else 0 (see "
+          "`-usage' statement)."; }
+      args.advance();
+    }
+  else
+    double_buffering_height = -1;
+
+  if (args.find("-cpu") != NULL)
+    {
+      cpu = true;
+      args.advance();
+    }
+  if (args.find("-min_height") != NULL)
+    {
+      const char *string = args.advance();
+      if ((string == NULL) ||
+          (sscanf(string,"%d",&preferred_min_stripe_height) != 1) ||
+          (preferred_min_stripe_height < 1))
+        { kdu_error e; e << "\"-min_height\" argument requires a positive "
+          "integer parameter."; }
+      args.advance();
+    }
+  if (args.find("-max_height") != NULL)
+    {
+      const char *string = args.advance();
+      if ((string == NULL) ||
+          (sscanf(string,"%d",&absolute_max_stripe_height) != 1) ||
+          (absolute_max_stripe_height < preferred_min_stripe_height))
+        { kdu_error e; e << "\"-max_height\" argument requires a positive "
+          "integer parameter, no smaller than the value associated with the "
+          "`-min_height' argument."; }
+      args.advance();
+    }
+  if (args.find("-fastest") != NULL)
+    { 
+      args.advance();
+      want_fastest = true;
+    }
+  if (args.find("-precise") != NULL)
+    { 
+      args.advance();
+      force_precise = true;
+    }
+
+
+  return ofile;
+}
+
+/*****************************************************************************/
+/* STATIC                     check_jp2_family_file                          */
+/*****************************************************************************/
+
+static bool
+  check_jp2_family_file(const char *fname)
+  /* This function opens the file and checks its first box, to see if it
+     contains the JP2-family signature.  It then closes the file and returns
+     the result.  This should avoid some confusion associated with files
+     whose suffix has been unreliably names. */
+{
+  jp2_family_src src;
+  jp2_input_box box;
+  src.open(fname);
+  bool result = box.open(&src) && (box.get_box_type() == jp2_signature_4cc);
+  src.close();
+  return result;
+}
+
+/*****************************************************************************/
+/* STATIC                        get_bpp_dims                                */
+/*****************************************************************************/
+
+static kdu_long
+  get_bpp_dims(siz_params *siz)
+  /* Figures out the number of "pixels" in the image, for the purpose of
+     converting byte counts into bits per pixel, or vice-versa. */
+{
+  int comps, max_width, max_height, n;
+
+  siz->get(Scomponents,0,0,comps);
+  max_width = max_height = 0;
+  for (n=0; n < comps; n++)
+    {
+      int width, height;
+      siz->get(Sdims,n,0,height);
+      siz->get(Sdims,n,1,width);
+      if (width > max_width)
+        max_width = width;
+      if (height > max_height)
+        max_height = height;
+    }
+  return ((kdu_long) max_height) * ((kdu_long) max_width);
+}
+
+
+/* ========================================================================= */
+/*                            External Functions                             */
+/* ========================================================================= */
+
+/*****************************************************************************/
+/*                                   main                                    */
+/*****************************************************************************/
+
+int main(int argc, char *argv[])
+{
+  kdu_customize_warnings(&pretty_cout);
+  kdu_customize_errors(&pretty_cerr);
+  kdu_args args(argc,argv,"-s");
+
+  // Parse simple arguments from command line
+  char *ifname;
+  float max_bpp;
+  int skip_components, max_layers, discard_levels;
+  int preferred_min_stripe_height, absolute_max_stripe_height;
+  kdu_dims region;
+  int num_threads, env_dbuf_height;
+  bool force_precise, want_fastest, simulate_parsing, cpu;
+  ska_dest_file *ofile =
+    parse_simple_args(args,ifname,max_bpp,simulate_parsing,skip_components,
+                      max_layers,discard_levels,
+                      region,preferred_min_stripe_height,
+                      absolute_max_stripe_height,force_precise,want_fastest,
+                      num_threads,env_dbuf_height,cpu);
+  if (args.show_unrecognized(pretty_cout) != 0)
+    { kdu_error e; e << "There were unrecognized command line arguments!"; }
+
+  // Create appropriate output file
+  kdu_compressed_source *input = NULL;
+  kdu_simple_file_source file_in;
+  jp2_family_src jp2_ultimate_src;
+  jp2_source jp2_in;
+  if (check_jp2_family_file(ifname))
+    {
+      input = &jp2_in;
+      jp2_ultimate_src.open(ifname);
+      if (!jp2_in.open(&jp2_ultimate_src))
+        { kdu_error e; e << "Supplied input file, \"" << ifname << "\", does "
+          "not appear to contain any boxes."; }
+      jp2_in.read_header();
+    }
+  else
+    {
+      input = &file_in;
+      file_in.open(ifname);
+    }
+  delete[] ifname;
+
+  // Create the code-stream, and apply any restrictions/transformations
+  kdu_codestream codestream;
+  codestream.create(input);
+  if ((max_bpp > 0.0F) || simulate_parsing)
+    {
+      kdu_long max_bytes = KDU_LONG_MAX;
+      if (max_bpp > 0.0F)
+        max_bytes = (kdu_long)
+          (0.125 * max_bpp * get_bpp_dims(codestream.access_siz()));
+      codestream.set_max_bytes(max_bytes,simulate_parsing);
+    }
+  codestream.apply_input_restrictions(skip_components,0,
+                                      discard_levels,max_layers,NULL,
+                                      KDU_WANT_OUTPUT_COMPONENTS);
+
+  kdu_dims *reg_ptr = NULL;
+  if (region.area() > 0)
+    {
+      kdu_dims dims; codestream.get_dims(0,dims,true);
+      dims &= region;
+      if (!dims)
+        { kdu_error e; e << "Region supplied via `-int_region' argument "
+          "has no intersection with the first image component to be "
+          "decompressed, at the resolution selected."; }
+      codestream.map_region(0,dims,region,true);
+      reg_ptr = &region;
+      codestream.apply_input_restrictions(skip_components,0,
+                                          discard_levels,max_layers,reg_ptr,
+                                          KDU_WANT_OUTPUT_COMPONENTS);
+    }
+
+  // If you wish to have rotation/transposition folded into the
+  // decompression process automatically, this is the place to call
+  // `kdu_codestream::change_appearance'.
+
+  // Find the dimensions of each image component we will be decompressing
+  int n, num_components = codestream.get_num_components(true);
+  kdu_dims *comp_dims = new kdu_dims[num_components];
+  for (n=0; n < num_components; n++)
+    codestream.get_dims(n,comp_dims[n],true);
+  if (ofile->crop.width == -1) {
+    ofile->crop.width = comp_dims[0].size.x;
+    ofile->crop.height = comp_dims[0].size.y;
+    ofile->crop.depth = num_components;
+    ofile->crop.x = 0;
+    ofile->crop.y = 0;
+    ofile->crop.z = 0;
+  }
+
+  // Next, prepare the output file
+  // Since we are treating each component as a frame, the first frame should
+  // have the same width and height as all the frames.
+  ofile->crop.depth=num_components;
+  ofile->crop.z=skip_components;
+  bool flip_vertically = true;
+
+  if (num_components == 0)
+    { kdu_error e; e << "Input image has no components!"; }
+  ofile->precision = codestream.get_bit_depth(n,true);
+  ofile->is_signed = codestream.get_signed(n,true);
+  ofile->write_header(jp2_ultimate_src, args);
+  codestream.apply_input_restrictions(skip_components,num_components,
+                                    discard_levels,max_layers,reg_ptr,
+                                    KDU_WANT_OUTPUT_COMPONENTS);
+  if (flip_vertically)
+    codestream.change_appearance(false,true,false);
+
+  // Start the timer
+  kdu_clock timer;
+  double processing_time=0.0, writing_time=0.0;
+
+  // Construct multi-threaded processing environment, if requested.  Note that
+  // all we have to do to leverage the presence of multiple physical processors
+  // is to create the multi-threaded environment with at least one thread for
+  // each processor, pass a reference (`env_ref') to this environment into
+  // `kdu_stripe_decompressor::start', and destroy the environment once we are
+  // all done.
+  //    If you are going to run the processing within a try/catch
+  // environment, with an error handler which throws exceptions rather than
+  // exiting the process, the only extra thing you need to do to realize
+  // robust multi-threaded processing, is to arrange for your `catch' clause
+  // to invoke `kdu_thread_entity::handle_exception' -- i.e., call
+  // `env.handle_exception(exc)', where `exc' is the exception code you catch,
+  // of type `kdu_exception'.  Even this is not necessary if you are happy for
+  // the `kdu_thread_env' object to be destroyed when an error/exception
+  // occurs.
+  kdu_thread_env env, *env_ref=NULL;
+  if (num_threads > 0)
+    {
+      env.create();
+      for (int nt=1; nt < num_threads; nt++)
+        if (!env.add_thread())
+          num_threads = nt; // Unable to create all the threads requested
+      env_ref = &env;
+    }
+
+  // Construct the stripe-decompressor object (this does all the work) and
+  // assigns stripe buffers for incremental processing. The present application
+  // uses `kdu_stripe_decompressor::get_recommended_stripe_heights' to find
+  // suitable stripe heights for processing.  If your application has its own
+  // idea of what constitutes a good set of stripe heights, you may generally
+  // use those values instead (could be up to the entire image in one stripe),
+  // but note that whenever the image is tiled, the stripe heights can have an
+  // impact on the efficiency with which the image is decompressed (a
+  // fundamental issue, not a Kakadu implementation issue).  For more on this,
+  // see the extensive documentation provided for
+  // `kdu_stripe_decompressor::pull_stripe'.
+  int *precisions = new int[num_components];
+  int *stripe_heights = new int[num_components];
+  int *max_stripe_heights = new int[num_components];
+
+  kdu_stripe_decompressor decompressor;
+  decompressor.start(codestream,force_precise,want_fastest,
+                     env_ref,NULL,env_dbuf_height);
+  decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,
+                                              absolute_max_stripe_height,
+                                              stripe_heights,
+                                              max_stripe_heights);
+  precisions[0] = ofile->precision;
+  if(ofile->reversible) {
+    std::cout << "reversible compression unimplemented" << std::endl;
+  }
+  else {
+    n=0;
+    float** stripe_bufs = new float *[num_components];
+
+    for(n = 0; n < num_components; ++n)
+      if ((stripe_bufs[n] =
+           new float[comp_dims[n].size.x*max_stripe_heights[n]]) == NULL)
+        { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
+
+    // Now for the incremental processing
+    bool continues=true;
+    int total_stripes = ofile->crop.height;
+    while (continues)
+      { 
+        decompressor.get_recommended_stripe_heights(preferred_min_stripe_height,
+                                                    absolute_max_stripe_height,
+                                                    stripe_heights,NULL);
+        continues = decompressor.pull_stripe(stripe_bufs,stripe_heights,
+                                             NULL,NULL,NULL);
+        // Attempt to discount file writing time; note, however, that this
+        // does not account for the fact that writing large stripes can
+        // tie up a disk in the background, dramatically increasing the
+        // time taken to read new compressed data while the next stripe
+        // is being decompressed.  To avoid excessive skewing of timing
+        // results due to disk I/O time, it is recommended that you run
+        // the application without any output files for timing purposes.
+        // All the stripes still get fully decompressed into memory
+        // buffers, but the only disk I/O is that due to reading of the
+        // compressed source.
+
+        if (cpu)
+          processing_time += timer.get_ellapsed_seconds();
+        for(n = 0; n < num_components; ++n)
+        ofile->write_stripe(stripe_heights[n],stripe_bufs[n], n);
+        if (cpu)
+          writing_time += timer.get_ellapsed_seconds();
+      }
+      decompressor.finish();
+      std::cout << "decomp fin" << std::endl;
+
+      for (n=0; n < num_components; n++)
+        delete[] stripe_bufs[n];
+      delete[] stripe_bufs;
+    }
+  
+  if (cpu)
+    { // Report processing time
+      processing_time += timer.get_ellapsed_seconds();
+      kdu_long total_samples = 0;
+      for (n=0; n < num_components; n++)
+        total_samples += comp_dims[n].area();
+      double samples_per_second = total_samples / processing_time;
+      pretty_cout << "Processing time = " << processing_time << " s; i.e., ";
+      pretty_cout << samples_per_second << " samples/s\n";
+      pretty_cout << "End-to-end time (including file reading) = "
+                  << processing_time + writing_time << " s.\n";
+      if (num_threads == 0)
+        pretty_cout << "Processed using the single-threaded environment "
+          "(see `-num_threads')\n";
+      else
+        pretty_cout << "Processed using the multi-threaded environment, with\n"
+          << "    " << num_threads << " parallel threads of execution "
+          "(see `-num_threads')\n";
+    }
+
+  // Clean up
+  if (env.exists())
+    env.cs_terminate(codestream); // This is not really necessary here, because
+      // we are about to destroy the multi-threaded environment.  However,
+      // if you need to keep the multi-threaded processing environment alive
+      // and destroy the codestream first, you should always precede the call
+      // to `codestream.destroy' with one to `env.cs_terminate'.
+  if (env.exists())
+    env.destroy();
+  codestream.destroy();
+  input->close();
+  if (jp2_ultimate_src.exists())
+    jp2_ultimate_src.close();
+  if (precisions != NULL)
+    delete[] precisions;
+  delete[] stripe_heights;
+  delete[] max_stripe_heights;
+  delete[] comp_dims;
+  delete ofile; 
+  return 0;
+}

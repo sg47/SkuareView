@@ -1,0 +1,77 @@
+<HTML>
+<HEAD>
+<TITLE> Kakadu Hyper-Doc (kdu_thread::set_cpu_affinity) </TITLE>
+<STYLE TYPE="text/css">
+<!--
+.indented-text { padding-left: 20pt; }
+.function-text { padding-left: 80pt;
+                 text-indent: -60pt; }
+-->
+</STYLE>
+</HEAD>
+<BODY TEXT="#000000" LINK="#0000ff" BGCOLOR="#B4DCB4">
+<P ALIGN="RIGHT">|<A HREF="#SynopsiS"> synopsis </A>||<A HREF="#ReturnS"> return value </A>||<A HREF="#ArgS"> arguments </A>||<A HREF="kdu_thread__fin$d_object.html"> prev </A>||<A HREF="kdu_thread__get$priority.html"> next </A>|</P>
+<H1><A NAME="ToP">kdu_thread::set_cpu_affinity</A></H1>
+<P CLASS="function-text"><B>bool</B> set_cpu_affinity(
+<B>kdu_long</B>&nbsp;affinity_mask)</P>
+<P>[Declared in <A HREF="++++coresy$u_elementary+h.html">"../coresys/common/kdu_elementary.h"</A>]</P><P><A HREF="kdu_thread.html">Go to class description.</A></P>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="SynopsiS">Synopsis</A></H2>
+<DIV CLASS="indented-text">
+<P>
+The purpose of this function is to indicate preferences
+for the logical CPU's the thread should run on. This
+function might not be implemented on all operating
+systems and the 
+<A HREF="kdu_thread__set$affinity.html#affinity_mask">affinity_mask</A> might be interpreted differently on different operating
+systems.
+</P><P>
+ The principle interpretation of 
+<A HREF="kdu_thread__set$affinity.html#affinity_mask">affinity_mask</A> is that it holds a set of flag bits, with one flag
+for each logical CPU on which the thread would like
+to be able to run. The LSB corresponds to the first
+logical CPU in the system. No more than 64 logical
+CPU's can be identified using this mechanism. Currently,
+this interpretation holds under Windows and Linux.
+</P><P>
+ Under OSX, the 
+<A HREF="kdu_thread__set$affinity.html#affinity_mask">affinity_mask</A> must be converted to a 32-bit integer that identifies
+groups of threads that wish to be scheduled on logical
+CPU's that have some shared physical resource (shared
+L2 cache, shared L3 cache, same die, etc.). To do this,
+the implementation currently forms this 32-bit identifier
+from the index of the least significant non-zero bit
+in the 
+<A HREF="kdu_thread__set$affinity.html#affinity_mask">affinity_mask</A> and the index of the most significant non-zero bit
+in the 
+<A HREF="kdu_thread__set$affinity.html#affinity_mask">affinity_mask</A>. In most practical applications, this is likely to
+produce the desired outcome, unless you assign affinity
+masks to different threads whose set bits partially
+overlap with one another.
+</P><P>
+ Although this function should be executable from any
+thread in the system, experience shows that some platforms
+do not behave correctly unless the function is invoked
+from within the thread whose processor affinity is
+being modified.
+</P>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><H2><A NAME="ReturnS">Return Value</A></H2><DIV CLASS="indented-text">
+<P>
+False if the thread has not been successfully created,
+or the 
+<A HREF="kdu_thread__set$affinity.html#affinity_mask">affinity_mask</A> is invalid, or the calling thread does not have permission
+to set the CPU affinity of another thread, or operating
+support has not yet been extended to offer this specific
+feature.
+</P>
+</DIV>
+<H2><A NAME="ArgS">Arguments</A></H2><DIV CLASS="indented-text">
+<H4><A NAME="affinity_mask">affinity_mask</A> [<B>kdu_long</B>]</H4><DIV CLASS="indented-text">
+</DIV>
+</DIV>
+
+<P ALIGN="CENTER"><HR></P><P ALIGN="RIGHT">|<A HREF="#ToP"> top </A>||<A HREF="#SynopsiS"> synopsis </A>||<A HREF="#ReturnS"> return value </A>||<A HREF="#ArgS"> arguments </A>||<A HREF="kdu_thread__fin$d_object.html"> prev </A>||<A HREF="kdu_thread__get$priority.html"> next </A>|</P>
+</BODY>
+</HTML>

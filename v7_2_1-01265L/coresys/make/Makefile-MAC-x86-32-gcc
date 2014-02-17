@@ -1,0 +1,31 @@
+KDU_GLIBS =
+# KDU_GLIBS += -static -static-libgcc # This option is for static builds, but
+         # might be problematic on the MAC; use xcode for exotic configurations
+
+CC = clang++  # You can change to g++, but may then need KDU_NO_AVX (see below)
+
+INCLUDES = -I../common
+C_OPT =  -O3 -DNDEBUG -Wall
+C_OPT += -Wno-uninitialized   # GCC reports false uninitialized warnings
+C_OPT += $(KDU_GLIBS)
+C_OPT += -fPIC -m32
+C_OPT += -mssse3
+C_OPT += -DKDU_MAC_SPEEDUPS   # Best way to select optimizations for MAC
+#C_OPT += -DKDU_CUSTOM_TEXT   # See "Internationalization" in "Compilation_Instructions.txt"
+#C_OPT += -DKDU_NO_THREADS    # Uncomment to compile without multi-threading
+#C_OPT += -DKDU_NO_AVX        # Commont out if GCC version < 4.6
+AVXFLAGS =
+AVXFLAGS = -mavx              # Comment out if GCC version >= 4.6
+CFLAGS = $(INCLUDES) $(C_OPT)
+
+BIN_DIR = ../../bin/Mac-x86-32-gcc
+LIB_DIR = ../../lib/Mac-x86-32-gcc
+
+STATIC_LIB_NAME = libkdu.a
+SHARED_LIB_NAME = libkdu_v72R.so
+
+LIB_RESOURCES =
+
+all :: $(STATIC_LIB_NAME) $(SHARED_LIB_NAME)
+
+include Targets.mk

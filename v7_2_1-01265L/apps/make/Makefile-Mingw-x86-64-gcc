@@ -1,0 +1,28 @@
+KDU_GLIBS =
+# KDU_GLIBS += -static -static-libgcc # Uncomment this to get a static build
+
+CC = x86_64-w64-mingw32-g++
+
+INCLUDES = -I../../coresys/common -I../args -I../image -I../compressed_io -I../support -I../client_server
+C_OPT = -O2 -DNDEBUG -Wall
+C_OPT += -Wno-uninitialized -Wno-deprecated $(KDU_GLIBS)
+C_OPT += -m64
+C_OPT += -mssse3
+C_OPT += -DKDU_X86_INTRINSICS   # Various other speedup options available
+DEFINES = -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 # Remove for 32-bit I/O
+#DEFINES += -DKDU_CUSTOM_TEXT   # See "Internationalization" in "Compilation_Instructions.txt"
+
+CFLAGS = $(INCLUDES) $(C_OPT) $(DEFINES)
+LIBS = -lm
+NETLIBS = -lws2_32 -lnetapi32
+
+BIN_DIR = ../../bin/Mingw-x86-64-gcc
+LIB_DIR = ../../lib/Mingw-x86-64-gcc
+
+STATIC_LIB_SRC = libkdu.a
+SHARED_LIB_SRC = libkdu_v72R.dll
+
+LIB_SRC = $(SHARED_LIB_SRC)
+LIB_IMPORTS = -DCORESYS_IMPORTS
+
+include Targets.mk

@@ -1,0 +1,30 @@
+KDU_GLIBS =
+# KDU_GLIBS += -static -static-libgcc # Uncomment this to get a static build
+
+CC = g++
+
+INCLUDES = -I../common
+C_OPT =  -O2 -DNDEBUG -Wall
+C_OPT += -Wno-uninitialized   # GCC reports false uninitialized warnings
+C_OPT += $(KDU_GLIBS)
+C_OPT += -fPIC -m64
+C_OPT += -mssse3
+C_OPT += -DKDU_X86_INTRINSICS # Various other speedup options available
+#C_OPT += -DKDU_CUSTOM_TEXT   # See "Internationalization" in "Compilation_Instructions.txt"
+#C_OPT += -DKDU_NO_THREADS    # Uncomment to compile without multi-threading
+#C_OPT += -DKDU_NO_AVX        # Commont out if GCC version < 4.6
+AVXFLAGS =
+AVXFLAGS = -mavx              # Comment out if GCC version >= 4.6
+CFLAGS = $(INCLUDES) $(C_OPT)
+
+BIN_DIR = ../../bin/Linux-x86-64-gcc
+LIB_DIR = ../../lib/Linux-x86-64-gcc
+
+STATIC_LIB_NAME = libkdu.a
+SHARED_LIB_NAME = libkdu_v72R.so
+
+LIB_RESOURCES =
+
+all :: $(STATIC_LIB_NAME) $(SHARED_LIB_NAME)
+
+include Targets.mk
