@@ -19,6 +19,7 @@
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
+#include <float.h>
 // Core includes
 #include "kdu_messaging.h"
 #include "kdu_sample_processing.h"
@@ -94,6 +95,91 @@ convert_TFLOAT_to_ints(float *src, kdu_sample32 *dest,  int num,
       }
     else
       assert(0);
+}
+
+/*****************************************************************************/
+/* Determine min and max - this code is very messy and not guaranteed to work*/
+/*****************************************************************************/
+void fits_in::determine_min_and_max(ska_source_file* const source_file, int component) {
+    int height = 1;
+    float min = FLT_MAX;
+    float max = FLT_MIN;
+    int fheight = 0;
+    int num_unread_rows = source_file->crop.height * source_file->crop.depth;
+    
+    std::cout << "Starting search for min and max values..." << std::endl;
+    
+    int anynul = 0;
+    unsigned char nulval = 0;
+    LONGLONG stripe_elements = source_file->crop.width;
+    LONGLONG *fpixel_copy = (LONGLONG*) malloc(sizeof(LONGLONG) * naxis);
+    
+    
+    fpixel_copy[0] = source_file->crop.x + 1; // read from the begining of line
+    fpixel_copy[1] = fheight+1;
+    fpixel_copy[2] = component+1;
+    
+    while(num_unread_rows > 0) {      
+        //std::cout << "read line..." << std::endl;
+        float *buf = new float[stripe_elements];
+        double *double_buffer = new double[stripe_elements];
+        switch (bitpix) {
+            case FLOAT_IMG:
+                fits_read_pixll(in, TFLOAT, fpixel_copy, stripe_elements, &nulval, buf,
+                                &anynul, &status);
+                break;
+            case DOUBLE_IMG:
+                fits_read_pixll(in, TDOUBLE, fpixel_copy, stripe_elements, &nulval, double_buffer,
+                               &anynul, &status);
+                for(int index = 0; index < stripe_elements; index++) {
+                    buf[index] = (float) double_buffer[index];
+                }
+                break;
+            default:
+                kdu_error e; e << "Unsupport FITS image type!";
+        }
+        
+        if (status != 0)
+        { kdu_error e; e << "FITS file terminated prematurely!"; }
+        
+        //std::cout << "update variables..." << std::endl;
+        fpixel_copy[1]++;
+
+        // If not NaN, check min and max
+        // for undefined pixels the buffer is being filled with -nan,
+        // with my current compiler isnan(-nan) is returning false.
+        // I identified -nan to be 4294967295 in binary, so thats how i'm
+        // testing for this case...
+        // TODO: show this horrible snippet of code to someone for better ideas
+        
+        //std::cout << "check min max..." << std::endl;
+        for(int i = 0; i < height * stripe_elements; i++) {
+            union ufloat {
+                float f;
+                unsigned b;
+            } uf;
+            uf.f = buf[i];
+            
+            if (uf.b != 4294967295) {
+                if(buf[i] > max) {
+                    max = buf[i];
+                }
+                if(buf[i] < min) {
+                    min = buf[i];
+                }
+            }
+        }
+        
+        //std::cout << "end iteration..." << std::endl << std::endl;
+            
+        // increment the position in FITS file
+        fheight += height;
+        num_unread_rows -= height;
+    }
+    
+    std::cout << "min: " << min << ", max: " << max << std::endl;
+    source_file->float_minvals = min;
+    source_file->float_maxvals = max;
 }
 
 /* ========================================================================= */
@@ -225,6 +311,7 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
   bool has_premultiplied_alpha=false;  //at this stage we declare "no alpha components"
   bool has_unassociated_alpha=false;
 
+  bool has_min_max_in_header = true; // Check if the FITS header contains DATAMIN and DATATMAX values
   bool align_lsbs = false;
   if (source_file->forced_prec > 0) 
     source_file->precision = source_file->forced_prec;
@@ -250,8 +337,16 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     
     // overwrite default min and max values for the entire image
     if (!fits.minmax) {
-      if (!strcmp(keyname, "DATAMIN")) sscanf(keyvalue, "%lf", &source_file->float_minvals);
-      if (!strcmp(keyname, "DATAMAX")) sscanf(keyvalue, "%lf", &source_file->float_maxvals);
+      if (!strcmp(keyname, "DATAMIN")) {
+        sscanf(keyvalue, "%lf", &source_file->float_minvals);
+      } else {
+        has_min_max_in_header = false;
+      }
+      if (!strcmp(keyname, "DATAMAX")) {
+        sscanf(keyvalue, "%lf", &source_file->float_maxvals);
+      } else {
+        has_min_max_in_header = false;
+      }
     }
 
     // put all the header data into metadata (in case we ever convert back to
@@ -262,11 +357,16 @@ fits_in::read_header(jp2_family_tgt &tgt, kdu_args &args,
     // Then write to metadata
     for (int j=0; record[j] != '\0'; ++j) 
       source_file->metadata_buffer[buf_idx++] = record[j];
-    source_file->metadata_buffer[buf_idx++] = '?'; // My character to split records
+    source_file->metadata_buffer[buf_idx++] = '\n'; // My character to split records
   }
+  
   source_file->metadata_length = buf_idx;
   source_file->metadata_buffer[buf_idx--] = '\0';
 
+  if(!has_min_max_in_header) {
+    determine_min_and_max(source_file, 0);
+  }
+    
   std::cout << "\nThe following values of MIN and MAX will be used:\n";
   std::cout << "DATAMIN = " << source_file->float_minvals << "\n";
   std::cout << "DATAMAX = " << source_file->float_maxvals << "\n";

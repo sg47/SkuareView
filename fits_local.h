@@ -160,6 +160,8 @@ class fits_in : public ska_source_file_base {
     void read_stripe(int height, float *buf,
         ska_source_file* const source_file, int component);
   private: // Members describing the organization of the FITS data
+    void determine_min_and_max(ska_source_file* const source_file, int component);
+    
     fitsfile *in;     //pointer to open FITS image
     int status;    // returned status of FITS functions
     fits_param fits;  // specific FITS parameters
