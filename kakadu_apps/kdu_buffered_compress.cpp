@@ -701,15 +701,22 @@ int main(int argc, char *argv[])
     siz.set(Sdims,i,1,ifile->crop.width);
     if (m_components > 0) {
       siz.set(Msigned,i,0,ifile->is_signed);
-      siz.set(Mprecision,i,0,ifile->precision);
+      siz.set(Mprecision,i,0,ifile->precision > 32 ? 32 : ifile->precision); // Force 32 bit - compressor must work with 38 bits or less
     }
     else {
       siz.set(Ssigned,i,0,ifile->is_signed);
-      siz.set(Sprecision,i,0,ifile->precision);
+      siz.set(Sprecision,i,0,ifile->precision > 32 ? 32 : ifile->precision); // Force 32 bit - compressor must work with 38 bits or less
     }
     kdu_long samples = ifile->crop.width; samples *= ifile->crop.height;
     total_samples += samples;
     total_pixels = (samples > total_pixels)?samples:total_pixels;
+
+    std::cout << "depth: " << ifile->crop.depth << ", width: " << ifile->crop.width << ", height: " << ifile->crop.height << std::endl;
+    int test = 0;
+    siz.get(Mprecision,i,0,test, true, true, true);
+    std::cout << "siz: m precision: " << test << std::endl;
+    siz.get(Sprecision,i,0,test, true, true, true);
+    std::cout << "siz: s precision: " << test << std::endl;
   }
 
   int c_components=0;
@@ -828,7 +835,7 @@ int main(int argc, char *argv[])
     if ((stripe_bufs[n]=new float[ifile->crop.width*max_stripe_heights[n]])==NULL)
       { kdu_error e; e << "Insufficient memory to allocate stripe buffers."; }
     else {
-      precisions[n] = ifile->precision;
+      precisions[n] = ifile->precision > 32 ? 32 : ifile->precision;
       is_signed[n] = ifile->is_signed;
     }
   }
