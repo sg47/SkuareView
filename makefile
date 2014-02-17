@@ -25,11 +25,11 @@ EXPAND=kakadu_apps/kdu_buffered_expand.cpp
 SUPPORT=$(APPS)/support
 
 # Libraries
-KDU_LIBS=-lkdu_v72R -lkdu_a72R -lkdu -lm -lnsl -lkdu_aux
+KDU_LIBS=-lkdu_v73R -lkdu_a73R -lm # not needed on OSX -lkdu -lnsl -lkdu_aux
 FITS_LIB=-lcfitsio
-HDF5_LIBS=-lhdf5 -lhdf5_hl -lz -lsz
+HDF5_LIBS=-lhdf5 -lhdf5_hl -lz # not needed on OSX -lsz
 CASA_LIBS=
-TIFF_LIBS=-ltiff
+TIFF_LIBS= # unused -ltiff
 LIBS=$(KDU_LIBS) $(FITS_LIB) $(HDF5_LIBS) $(CASA_LIBS) $(TIFF_LIBS)
 
 all: $(ENC) $(DEC)
