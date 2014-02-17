@@ -305,12 +305,22 @@ fits_in::read_stripe(int height, float *buf, ska_source_file* const source_file,
   fpixel[1] = frame_fheight[component]+1;
   fpixel[2] = component+1;
 
+  double *double_buffer = new double[stripe_elements];
   for(int i = 0; i < height; i++, buf+=source_file->crop.width, fpixel[1]++) {
     switch (bitpix) { 
       case FLOAT_IMG: 
         fits_read_pixll(in, TFLOAT, fpixel, stripe_elements, &nulval, buf, 
             &anynul, &status);
         break;
+      case DOUBLE_IMG:
+        fits_read_pixll(in, TDOUBLE, fpixel, stripe_elements, &nulval, double_buffer,
+                        &anynul, &status);
+        for(int index = 0; index < stripe_elements; index++) {
+          buf[index] = (float) double_buffer[index];
+        }
+        break;
+      default:
+        kdu_error e; e << "Unsupport FITS image type!";
     }
     if (status != 0)
       { kdu_error e; e << "FITS file terminated prematurely!"; }
