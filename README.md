@@ -8,9 +8,9 @@ The software has not been tested to a complete extent.
 Usage
 =====
 
-make                    - To compile
-./skuareview-encode     - To encode .fits files to JPEG2000
-./skuareview-decode     - To decode .jp2 or .jpx files to .fits
+- make                    - To compile (or make -f [OS specific makefile])
+- ./skuareview-encode     - To encode .fits files to JPEG2000
+- ./skuareview-decode     - To decode .jp2 or .jpx files to .fits
 
 Running the above programs provides a more than adequate enough description on
 how to execute the program.
@@ -82,10 +82,12 @@ find_minmax.c
 
 Compilation instructions are specified within the makefile.
 
+Kakadu Modifications
+==============================================================================
+
 This is currently a very brief instruction on what modificaitons WERE 
 made to the Kakadu Library and Kakadu Apps in order for SkuareView-NGAS-plugin
-to compile. They assume an understanding of the software.
-==============================================================================
+to compile. **They assume an understanding of the software.**
 
 Preferably all these changes should be enclosed in #ifdef SKA
 
